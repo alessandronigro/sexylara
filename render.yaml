@@ -8,8 +8,6 @@ services:
     startCommand: npm run start:api
     plan: free
     envVars:
-      - key: PORT
-        value: 10000
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
@@ -32,8 +30,6 @@ services:
     startCommand: npm run start:ws
     plan: free
     envVars:
-      - key: PORT
-        value: 10000
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
