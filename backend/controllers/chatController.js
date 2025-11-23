@@ -1,0 +1,1 @@
+exports.chat = async (req, res) => res.json({ reply: 'Risposta testuale da Lara' });

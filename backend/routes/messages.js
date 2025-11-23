@@ -1,0 +1,1 @@
+const express = require("express"), r = express.Router(), a = require("../controllers/messagesController"), m = require("../middleware/auth"); r.get("/", m, a.getMessages); r.post("/", m, a.saveMessage); module.exports = r;

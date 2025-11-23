@@ -1,0 +1,48 @@
+services:
+  # API Service
+  - type: web
+    name: sexylara-api
+    env: node
+    rootDirectory: backend
+    buildCommand: npm install
+    startCommand: npm run start:api
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: API_VENICE
+        sync: false
+      - key: ADDRESS_VENICE
+        sync: false
+      - key: MODEL_VENICE
+        sync: false
+      - key: REPLICATE_API_TOKEN
+        sync: false
+
+  # WebSocket Service
+  - type: web
+    name: sexylara-ws
+    env: node
+    rootDirectory: backend
+    buildCommand: npm install
+    startCommand: npm run start:ws
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: API_VENICE
+        sync: false
+      - key: ADDRESS_VENICE
+        sync: false
+      - key: MODEL_VENICE
+        sync: false
+      - key: REPLICATE_API_TOKEN
+        sync: false

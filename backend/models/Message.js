@@ -1,0 +1,1 @@
+const mongoose = require("mongoose"); module.exports = mongoose.model("Message", new mongoose.Schema({ userId: String, role: String, content: String, caption: String }, { timestamps: true }));

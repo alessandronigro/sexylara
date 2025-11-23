@@ -1,0 +1,1 @@
+exports.generateAudio = async (req, res) => res.json({ audio: 'https://example.com/audio.mp3' });

@@ -1,0 +1,1 @@
+exports.generateImage = async (req, res) => res.json({ image: 'https://example.com/image.jpg' });
