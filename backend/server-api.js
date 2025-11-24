@@ -21,13 +21,26 @@ const aiContactsRoutes = require('./routes/aiContacts');
 const girlfriendRoutes = require('./routes/girlfriend');
 const groupManagementRoutes = require('./routes/groupManagement');
 const userDiscoveryRoutes = require('./routes/userDiscovery'); // Added import
-const { generateAvatar } = require("./routes/image");
+const audioRoutes = require('./routes/audio');
+const videoRoutes = require('./routes/video');
+const npcShareRoutes = require('./routes/npc_share');
+const npcFeedRoutes = require('./routes/npc_feed');
+const authRoutes = require('./routes/auth');
 
 const app = express();
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 4001;
 
+// Middleware
+app.use(cors());
+app.use(bodyParser.json({ limit: '50mb' }));
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/audio', audioRoutes);
+app.use('/api/video', videoRoutes);
+app.use('/api/npc', npcShareRoutes);
+app.use('/api/feed', npcFeedRoutes);
 app.use('/api', webhookRoutes);
-app.use(bodyParser.json({ limit: '10mb' }));
 app.use('/api', paymentsRoutes);
 app.use('/api', userRoutes);
 app.use('/api', messageRoutes);

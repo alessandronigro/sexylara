@@ -287,17 +287,18 @@ wss.on('connection', (ws, req) => {
             // 2. Genera risposta intelligente con Brain Engine
             console.log(`🧠 Using Brain Engine for ${ai.name}...`);
 
-            const response = await brainEngine.generateIntelligentResponse({
-              ai: ai,
-              user: userProfile,
-              group: {
+            const response = await brainEngine.generateIntelligentResponse(
+              ai,
+              userProfile,
+              text,
+              {
                 id: group_id,
                 name: groupData.name,
                 members: members
               },
-              message: text,
-              recentMessages: recentMessages || []
-            });
+              recentMessages || [],
+              generateChatReply
+            );
 
             const output = response.output;
 

@@ -6,7 +6,7 @@
 class IntentEngine {
 
     analyze(userMessage) {
-        const msg = userMessage.toLowerCase();
+        const msg = (userMessage || "").toLowerCase();
 
         // Default
         const result = {

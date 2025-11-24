@@ -12,6 +12,8 @@ import 'package:thrilme/models/message.dart';
 import 'package:thrilme/widgets/unified_message_bubble.dart';
 import 'group_invite_screen.dart';
 import 'invite_user_screen.dart';
+import 'npc_feed_screen.dart';
+import 'npc_profile_screen.dart';
 
 class GroupChatScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -492,11 +494,40 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                   style: TextStyle(color: Colors.pinkAccent),
                 ),
                 const SizedBox(height: 24),
+Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Column(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.feed, color: Colors.deepPurple, size: 32),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => NpcFeedScreen(npcId: id)));
+                          },
+                        ),
+                        const Text('Bacheca', style: TextStyle(color: Colors.white70)),
+                      ],
+                    ),
+                    Column(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.share, color: Colors.teal, size: 32),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => NpcProfileScreen(npcId: id)));
+                          },
+                        ),
+                        const Text('Condividi', style: TextStyle(color: Colors.white70)),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    // Navigate to full profile if available
-                    // context.push('/chat/profile/$id'); 
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => NpcProfileScreen(npcId: id)));
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.pinkAccent,

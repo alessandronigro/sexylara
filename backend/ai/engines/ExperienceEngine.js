@@ -14,7 +14,7 @@ class ExperienceEngine {
 
         // 1. Calcolo XP Base
         updates.xpGained = 10; // Base per messaggio
-        if (userMessage.length > 50) updates.xpGained += 5;
+        if ((userMessage || "").length > 50) updates.xpGained += 5;
 
         // 2. Calcolo Intimità (Reward System)
         if (sentiment === 'positive') {
@@ -26,7 +26,8 @@ class ExperienceEngine {
 
         // 3. Evoluzione Tratti (Adattamento)
         // Es. Se l'utente è molto romantico, l'NPC diventa più empatico
-        if (userMessage.includes("amore") || userMessage.includes("cuore")) {
+        const msg = (userMessage || "").toLowerCase();
+        if (msg.includes("amore") || msg.includes("cuore")) {
             updates.traitChanges['empathy'] = 0.01;
         }
 

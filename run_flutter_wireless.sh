@@ -6,7 +6,7 @@ set -euo pipefail
 # --------------------------------------------------------------------
 # Inserisci l'IP:PORTA che vedi in 
 # Impostazioni → Opzioni sviluppatore → Debug wireless → "Indirizzo IP e porta"
-WIRELESS_IP_PORT="192.168.1.235:36053"
+WIRELESS_IP_PORT="192.168.1.157:41625"
 
 # Device ID per Flutter (usa l'IP wireless)
 device="${1:-$WIRELESS_IP_PORT}"

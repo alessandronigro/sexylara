@@ -1,7 +1,7 @@
 module.exports = function computeEmotion(ai, userMessage, aiMemory) {
 
     let emotion = aiMemory.currentEmotion || "calmo";
-    const msg = userMessage.toLowerCase();
+    const msg = (userMessage || "").toLowerCase();
 
     // Logica di base per il cambio emotivo
     if (msg.includes("ti amo") || msg.includes("mi manchi") || msg.includes("sei speciale")) {

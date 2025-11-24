@@ -8,11 +8,12 @@ module.exports = function evolvePersona(ai, memory, userMessage) {
         };
     }
 
-    const msg = userMessage.toLowerCase();
+
+    const msg = (userMessage || "").toLowerCase();
     const sensitivity = ai.evolution?.attachment_sensitivity || 0.01;
 
     // Evoluzione basata sulla lunghezza e contenuto
-    if (userMessage.length > 30) {
+    if ((userMessage || "").length > 30) {
         memory.evolution.attachment += sensitivity;
     }
 
