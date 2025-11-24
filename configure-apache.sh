@@ -52,8 +52,8 @@ cat > /etc/apache2/sites-available/sexylara.chat.conf << 'EOF'
     ProxyPassReverse /ws http://localhost:5001/ws
     
     # Error and Access logs
-    ErrorLog \${APACHE_LOG_DIR}/sexylara-error.log
-    CustomLog \${APACHE_LOG_DIR}/sexylara-access.log combined
+    ErrorLog /var/log/apache2/sexylara-error.log
+    CustomLog /var/log/apache2/sexylara-access.log combined
 </VirtualHost>
 EOF
 

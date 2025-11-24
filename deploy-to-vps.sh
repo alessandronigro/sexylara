@@ -58,6 +58,15 @@ echo "🛑 Stopping old container if exists..."
 docker stop sexylara 2>/dev/null || true
 docker rm sexylara 2>/dev/null || true
 
+echo "♻️ Restarting Docker service..."
+systemctl restart docker
+sleep 5
+
+echo "🧹 Cleaning up ports..."
+fuser -k -9 4000/tcp 2>/dev/null || true
+fuser -k -9 5001/tcp 2>/dev/null || true
+sleep 5
+
 echo "🚀 Starting new container..."
 docker run -d \
   --name sexylara \
