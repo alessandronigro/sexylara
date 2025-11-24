@@ -19,6 +19,9 @@ const girlfriendRoutes = require('./routes/girlfriend');
 const messageRoutes = require('./routes/message');
 const groupRoutes = require('./routes/group');
 const { brainEngine } = require('./ai/brainEngine');
+const wsNotificationService = require('./services/wsNotificationService');
+const MediaGenerationService = require('./services/MediaGenerationService');
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -80,8 +83,8 @@ app.post('/generate-avatar', async (req, res) => {
     const imageUrl = result.startsWith('http') ? result : `http://${req.headers.host}/${result}`;
     res.json({ imageUrl });
   } catch (error) {
-    console.error('Avatar generation error:', error);
-    res.status(500).json({ error: 'Failed to generate avatar' });
+    console.error('❌ Error generating avatar:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -97,10 +100,14 @@ wss.on('connection', (ws, req) => {
 
   console.log(`🛰️ Connessione WebSocket per utente ${userId}`);
 
+  // ✅ Register connection for notifications
+  wsNotificationService.registerConnection(userId, ws);
+
   ws.on('message', async (msg) => {
     const sessionId = new Date().toISOString().slice(0, 10);
-    const { text, traceId, girlfriend_id, group_id } = JSON.parse(msg.toString());
-    console.log('📨 Messaggio ricevuto:', { text, traceId, girlfriend_id, group_id, userId });
+    const parsed = JSON.parse(msg.toString());
+    const { text, traceId, girlfriend_id, group_id, mediaType, mediaUrl } = parsed;
+    console.log('📨 Messaggio ricevuto:', { text, traceId, girlfriend_id, group_id, mediaType, mediaUrl, userId });
 
     try {
       // ========================================
@@ -413,18 +420,60 @@ wss.on('connection', (ws, req) => {
 
         console.log('🧠 Using Brain Engine for 1-to-1 chat...');
 
+        // ===== ANALYZE RECEIVED MEDIA IF PRESENT =====
+        let mediaAnalysisContext = '';
+        let mediaEmotionalImpact = null;
+
+        if (mediaType && mediaUrl) {
+          console.log(`📥 User sent ${mediaType}, analyzing...`);
+
+          try {
+            const { MediaUnderstandingEngine } = require('./ai/brainEngine');
+            const mediaResult = await MediaUnderstandingEngine.processReceivedMedia(
+              mediaType,
+              mediaUrl,
+              girlfriend,
+              userId
+            );
+
+            // Add media context to prompt
+            mediaAnalysisContext = MediaUnderstandingEngine.generateContextPrompt(
+              mediaResult.analysis,
+              mediaType
+            );
+
+            // Store emotional impact to update NPC state later
+            mediaEmotionalImpact = mediaResult.emotionalImpact;
+
+            // Update NPC memory
+            MediaUnderstandingEngine.updateNpcMemory(girlfriend, mediaResult.memoryRecord);
+
+            console.log('✅ Media analyzed:', mediaResult.analysis);
+            console.log('💭 Generated reaction:', mediaResult.reaction);
+
+            // Use the generated reaction as the AI response
+            // (or let the AI generate its own based on the context)
+            // For now, we'll add the context and let the AI respond naturally
+
+          } catch (mediaError) {
+            console.error('❌ Error analyzing media:', mediaError);
+            mediaAnalysisContext = `\n\nL'utente ti ha inviato un ${mediaType}, ma non sono riuscito ad analizzarlo completamente. Reagisci comunque in modo positivo.\n`;
+          }
+        }
+
         // Usa Brain Engine per risposta intelligente
-        const response = await brainEngine.generateIntelligentResponse({
-          ai: girlfriend,
-          user: {
+        const response = await brainEngine.generateIntelligentResponse(
+          girlfriend,
+          {
             id: userId,
             name: userPrefs.name,
             ...userPrefs
           },
-          group: null, // null per chat 1-to-1
-          message: text,
-          recentMessages: recentMsgs || []
-        });
+          text + mediaAnalysisContext, // Add media context to message
+          null, // group
+          recentMsgs ? recentMsgs.reverse() : [],
+          generateChatReply // Inject dependency
+        );
 
         let output = response.output;
         let type = response.type || 'chat';
@@ -434,6 +483,19 @@ wss.on('connection', (ws, req) => {
         // Fallback se risposta è vuota o difensiva
         if (!output || output.trim() === '') {
           output = "Mmm... sto cercando le parole giuste per rispondere al tuo desiderio 😘";
+        }
+
+        // Check if user shared their name (simple heuristic or from intent engine)
+        // Note: Intent analysis is done inside brainEngine, but we can do a quick check here or rely on brainEngine to return intent
+        // For now, let's do a simple regex check here to update the DB immediately
+        const nameMatch = text.match(/(?:mi chiamo|sono|nome è)\s+([A-Z][a-z]+)/i);
+        if (nameMatch && nameMatch[1]) {
+          const newName = nameMatch[1];
+          console.log(`👤 Detected user name: ${newName}. Updating profile...`);
+          await supabase
+            .from('users') // Assuming 'users' table or similar for user profile
+            .update({ name: newName }) // Adjust column name if needed (e.g., 'display_name')
+            .eq('id', userId);
         }
 
         // const currentCredits = await db.getUserCredits(userId);
@@ -453,7 +515,51 @@ wss.on('connection', (ws, req) => {
         output = output.replace(/sono un'?intelligenza artificiale[^.]*\./gi, '');
         output = output.replace(/non posso[^.]*\./gi, '');
 
-        // Se è immagine/video/audio, invia diretto
+        // ===== HANDLE MEDIA GENERATION FROM MEDIA INTENT ENGINE =====
+        if (response.mediaRequested && (type === 'photo' || type === 'video' || type === 'audio')) {
+          console.log(`🎬 Generating ${type} as requested by user...`);
+
+          try {
+            let mediaResult;
+
+            if (type === 'photo') {
+              mediaResult = await MediaGenerationService.generatePhoto(girlfriend, userId);
+            } else if (type === 'video') {
+              mediaResult = await MediaGenerationService.generateVideo(girlfriend, userId);
+            } else if (type === 'audio') {
+              mediaResult = await MediaGenerationService.generateAudio(girlfriend, userId);
+            }
+
+            // Send media message
+            ws.send(JSON.stringify({
+              traceId,
+              role: 'assistant',
+              type,
+              content: mediaResult.url,
+              caption: mediaResult.caption,
+              girlfriend_id: girlfriend_id
+            }));
+
+            // Save to database
+            await saveMessage({
+              user_id: userId,
+              session_id: sessionId,
+              role: 'assistant',
+              type,
+              content: mediaResult.url,
+              girlfriend_id: girlfriend_id
+            });
+
+            ws.send(JSON.stringify({ traceId, end: true }));
+            return; // Exit early after media generation
+          } catch (mediaError) {
+            console.error(`❌ Error generating ${type}:`, mediaError);
+            output = `Ops, ho avuto un problema a generare ${type === 'photo' ? 'la foto' : type === 'video' ? 'il video' : 'l\'audio'}... riprova tra poco 😔`;
+            type = 'chat'; // Fallback to text
+          }
+        }
+
+        // Se è immagine/video/audio, invia diretto (LEGACY PATH)
         if (type === 'image') {
           ws.send(JSON.stringify({ traceId, status: 'rendering_image' }));
 
@@ -623,6 +729,37 @@ wss.on('connection', (ws, req) => {
             ultima_conversazione: text
           }
         });
+
+        // ===== UPDATE NPC EMOTIONAL STATE IF MEDIA WAS ANALYZED =====
+        if (mediaEmotionalImpact && girlfriend_id) {
+          try {
+            const currentStats = girlfriend.stats || {};
+            const updatedStats = {
+              ...currentStats,
+              attachment: Math.min(100, (currentStats.attachment || 0) + (mediaEmotionalImpact.attachment || 0)),
+              intimacy: Math.min(100, (currentStats.intimacy || 0) + (mediaEmotionalImpact.intimacy || 0)),
+              trust: Math.min(100, (currentStats.trust || 0) + (mediaEmotionalImpact.trust || 0))
+            };
+
+            await supabase
+              .from('girlfriends')
+              .update({
+                stats: updatedStats,
+                current_mood: mediaEmotionalImpact.mood,
+                media_memory: girlfriend.media_memory, // Updated by MediaUnderstandingEngine
+                last_interaction_at: new Date().toISOString()
+              })
+              .eq('id', girlfriend_id);
+
+            console.log('✅ NPC emotional state updated:', {
+              attachment: `+${mediaEmotionalImpact.attachment}`,
+              intimacy: `+${mediaEmotionalImpact.intimacy}`,
+              mood: mediaEmotionalImpact.mood
+            });
+          } catch (updateError) {
+            console.error('❌ Error updating NPC state:', updateError);
+          }
+        }
 
       } // Close else block for individual chat
 

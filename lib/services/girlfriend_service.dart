@@ -94,7 +94,7 @@ class GirlfriendService {
     try {
       print('🎨 Generating avatar with characteristics: $characteristics');
       final response = await http.post(
-        Uri.parse('${Config.aiServiceUrl}/generate-avatar'),
+        Uri.parse('${Config.apiBaseUrl}/api/generate-avatar'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'prompt': prompt,

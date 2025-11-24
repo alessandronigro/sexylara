@@ -66,21 +66,14 @@ class _GroupListScreenState extends ConsumerState<GroupListScreen> {
   Future<void> _handleInvite(String inviteId, bool accept) async {
     try {
       final groupService = ref.read(groupServiceProvider);
-      if (accept) {
-        await groupService.acceptInvite(inviteId);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invito accettato!')),
-          );
-        }
-      } else {
-        await groupService.declineInvite(inviteId);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invito rifiutato.')),
-          );
-        }
+      await groupService.respondToInvite(inviteId, accept);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(accept ? 'Invito accettato!' : 'Invito rifiutato.')),
+        );
       }
+      
       // Reload data
       _loadData();
     } catch (e) {

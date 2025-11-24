@@ -8,8 +8,10 @@ import 'dart:convert';
 
 import '../config.dart';
 import '../services/supabase_service.dart';
-import '../widgets/chat_message_bubble.dart'; 
-import 'group_invite_screen.dart'; // ← Import aggiunto
+import 'package:thrilme/models/message.dart';
+import 'package:thrilme/widgets/unified_message_bubble.dart';
+import 'group_invite_screen.dart';
+import 'invite_user_screen.dart';
 
 class GroupChatScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -239,12 +241,49 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           IconButton(
             icon: const Icon(Icons.person_add),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => GroupInviteScreen(
-                    groupId: widget.groupId,
-                    groupName: _groupName,
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: const Color(0xFF1A1A1A),
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (context) => SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.person, color: Colors.blueAccent),
+                        title: const Text('Invite User', style: TextStyle(color: Colors.white)),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => InviteUserScreen(
+                                groupId: widget.groupId,
+                                groupName: _groupName,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.smart_toy, color: Colors.pinkAccent),
+                        title: const Text('Invite NPC', style: TextStyle(color: Colors.white)),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => GroupInviteScreen(
+                                groupId: widget.groupId,
+                                groupName: _groupName,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -334,30 +373,31 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                          // Auto-detect image in text (for backward compatibility)
                          final urlRegExp = RegExp(r'(https?://[^\s]+\.(?:png|jpg|jpeg|gif|webp))', caseSensitive: false);
                          final match = urlRegExp.firstMatch(content);
-                         if (match != null) {
-                           imageUrl = match.group(0);
-                           content = content.replaceFirst(imageUrl!, '').trim();
-                         }
-                      }
+                          if (match != null) {
+                            imageUrl = match.group(0);
+                            content = content.replaceFirst(imageUrl!, '').trim();
+                          }
+                       }
 
-                      return ChatMessageBubble(
-                        content: content,
-                        imageUrl: imageUrl,
-                        senderName: !isMe ? (msg['sender_name'] ?? 'AI') : null,
-                        avatarUrl: !isMe ? msg['avatar'] : null,
-                        isMe: isMe,
-                        timestamp: msg['created_at'] != null
-                            ? DateTime.tryParse(msg['created_at'])
-                            : null,
-                        onAvatarTap: !isMe
-                            ? () => _navigateToProfile(
-                                  msg['sender_id'],
-                                  msg['sender_name'] ?? 'Utente',
-                                  msg['avatar'],
-                                  isAi,
-                                )
-                            : null,
-                      );
+                       return UnifiedMessageBubble(
+                         content: content,
+                         type: imageUrl != null ? MessageType.image : MessageType.text,
+                         mediaUrl: imageUrl,
+                         senderName: !isMe ? (msg['sender_name'] ?? 'AI') : null,
+                         avatarUrl: !isMe ? msg['avatar'] : null,
+                         isMe: isMe,
+                         timestamp: msg['created_at'] != null
+                             ? DateTime.tryParse(msg['created_at'])
+                             : null,
+                         onAvatarTap: !isMe
+                             ? () => _navigateToProfile(
+                                   msg['sender_id'],
+                                   msg['sender_name'] ?? 'Utente',
+                                   msg['avatar'],
+                                   isAi,
+                                 )
+                             : null,
+                       );
                     },
                   ),
           ),

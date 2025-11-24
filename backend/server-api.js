@@ -18,6 +18,10 @@ const messageRoutes = require('./routes/message');
 const groupRoutes = require('./routes/group');
 const groupInviteRoutes = require('./routes/groupInvite');
 const aiContactsRoutes = require('./routes/aiContacts');
+const girlfriendRoutes = require('./routes/girlfriend');
+const groupManagementRoutes = require('./routes/groupManagement');
+const userDiscoveryRoutes = require('./routes/userDiscovery'); // Added import
+const { generateAvatar } = require("./routes/image");
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -30,7 +34,31 @@ app.use('/api', messageRoutes);
 app.use('/api', groupRoutes);
 app.use('/api', groupInviteRoutes);
 app.use('/api', aiContactsRoutes);
+app.use('/api/girlfriends', girlfriendRoutes);
+app.use('/api/group', groupManagementRoutes);
+app.use('/api/users', userDiscoveryRoutes); // Added route usage
 app.use('/api/voice', voiceRoutes);
+
+// Avatar Generation Route
+app.post('/api/generate-avatar', async (req, res) => {
+    const { prompt, girlfriendId } = req.body;
+    console.log('🎨 Generate avatar request:', { prompt: prompt?.substring(0, 50), girlfriendId });
+
+    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+
+    try {
+        const result = await generateAvatar(prompt, girlfriendId);
+        console.log('✅ Avatar generated:', { result: result?.substring(0, 100), isSupabase: result?.startsWith('http') });
+
+        // If result starts with http, it's a full URL (Supabase), otherwise it's a filename (local fallback)
+        const imageUrl = result.startsWith('http') ? result : `http://${req.headers.host}/${result}`;
+        res.json({ imageUrl });
+    } catch (error) {
+        console.error('Avatar generation error:', error);
+        res.status(500).json({ error: 'Failed to generate avatar' });
+    }
+});
+
 app.use(cors());
 app.use("/public", express.static(path.join(__dirname, "public")));
 
@@ -190,6 +218,48 @@ app.post('/api/photos/comment', async (req, res) => {
     } catch (error) {
         console.error('Errore commento foto:', error);
         res.status(500).json({ error: 'Impossibile commentare la foto' });
+    }
+});
+
+// Audio Upload Route
+app.post('/api/audio/upload', async (req, res) => {
+    const { userId, girlfriendId, filename, audioBase64 } = req.body || {};
+    if (!userId || !audioBase64) {
+        return res.status(400).json({ error: 'userId e audioBase64 sono obbligatori' });
+    }
+
+    try {
+        const buffer = Buffer.from(audioBase64, 'base64');
+
+        // Upload to Supabase Storage
+        const uploadPath = `${userId}/${girlfriendId || 'general'}/${filename || `audio_${Date.now()}.m4a`}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('chat-audio')
+            .upload(uploadPath, buffer, {
+                contentType: 'audio/m4a',
+                upsert: false
+            });
+
+        if (uploadError) {
+            console.error('❌ Supabase upload error:', uploadError);
+            throw uploadError;
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+            .from('chat-audio')
+            .getPublicUrl(uploadPath);
+
+        console.log('✅ Audio uploaded:', publicUrl);
+
+        res.json({
+            url: publicUrl,
+            path: uploadPath
+        });
+
+    } catch (error) {
+        console.error('❌ Error uploading audio:', error);
+        res.status(500).json({ error: 'Impossibile caricare l\'audio' });
     }
 });
 

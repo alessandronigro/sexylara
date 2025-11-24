@@ -2,7 +2,7 @@
 const Replicate = require("replicate");
 const logToFile = require("../utils/log");
 const { writeFile } = require('fs/promises');
-const generateprompt = require("./openRouterServiceForAudio");
+const generatePrompt = require("./promptGenerator");
 const { v4: uuidv4 } = require('uuid');
 const storageService = require('../services/supabase-storage');
 
@@ -32,7 +32,7 @@ const audio = async (prompt, voiceUrl, chatHistory = [], userId = null, girlfrie
     console.log('🎙️ Generating audio response for:', prompt);
 
     // Genera il testo migliorato con AI
-    const enhancedText = await generateprompt(contextPrompt);
+    const enhancedText = await generatePrompt(contextPrompt, 'audio', { language: 'it' });
     console.log('✨ Enhanced audio text:', enhancedText);
 
     try {

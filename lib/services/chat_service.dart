@@ -123,7 +123,13 @@ class ChatService {
     }
   }
 
-  void sendMessage(String text, {String? girlfriendId, ReplyPreview? replyTo}) {
+  void sendMessage(
+    String text, {
+    String? girlfriendId,
+    ReplyPreview? replyTo,
+    String? mediaType,
+    String? mediaUrl,
+  }) {
     if (_channel == null) return;
 
     final traceId = _uuid.v4();
@@ -132,6 +138,8 @@ class ChatService {
       'traceId': traceId,
       if (girlfriendId != null) 'girlfriend_id': girlfriendId,
       if (replyTo != null) 'reply_preview': replyTo.toJson(),
+      if (mediaType != null) 'mediaType': mediaType,
+      if (mediaUrl != null) 'mediaUrl': mediaUrl,
     };
     final payload = jsonEncode(payloadMap);
     _channel!.sink.add(payload);

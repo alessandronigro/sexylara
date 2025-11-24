@@ -50,3 +50,14 @@ node_modules/
 .DS_Store
 pm2.log
 logs.txt
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+ios/Pods/
+ios/Runner.xcworkspace/
+web/.dart_tool/
+web/.flutter-plugins
+web/.flutter-plugins-dependencies

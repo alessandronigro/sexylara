@@ -57,18 +57,33 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
     try {
       final groupService = ref.read(groupServiceProvider);
       
-      await groupService.inviteMember(
+      final result = await groupService.inviteNpc(
         groupId: widget.groupId,
-        invitedId: contact.id,
-        invitedType: 'ai',
-        message: 'Join my group!',
+        npcId: contact.id,
       );
 
       if (mounted) {
+        final status = result['status'];
+        final reason = result['reason'];
+        
+        String msg = '';
+        if (status == 'accepted') {
+          msg = '${contact.name} joined the group!';
+        } else if (status == 'pending_approval') {
+          msg = 'Invite sent to owner for approval.';
+        } else if (status == 'rejected') {
+          msg = '${contact.name} declined: $reason';
+        } else {
+          msg = 'Invite status: $status';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${contact.name} invited successfully!')),
+          SnackBar(content: Text(msg)),
         );
-        Navigator.pop(context); // Close screen after invite
+        
+        if (status == 'accepted' || status == 'pending_approval') {
+           // Optional: remove from list or mark as invited
+        }
       }
     } catch (e) {
       if (mounted) {

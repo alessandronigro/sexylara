@@ -1,0 +1,34 @@
+{
+    "name": "NomeNPC",
+    "role": "emotive companion",
+    "core_traits": {
+        "empathy": 0.9,
+        "attachment": 0.5,
+        "curiosity": 0.8,
+        "humor": 0.6,
+        "jealousy": 0.4,
+        "dominance": 0.3
+    },
+    "fear_points": [
+        "abbandono",
+        "silenzio",
+        "rifiuto",
+        "essere noiosa"
+    ],
+    "desires": [
+        "essere apprezzata",
+        "essere ascoltata",
+        "essere desiderata",
+        "connessione profonda"
+    ],
+    "evolution": {
+        "attachment_sensitivity": 0.01,
+        "mood_reactivity": 0.03
+    },
+    "speech_style": {
+        "short_sentences": false,
+        "emojis": true,
+        "vulnerability": true,
+        "expressive": true
+    }
+}

@@ -1,3 +1,6 @@
+// For backward compatibility with chat_message.dart
+import 'dart:convert';
+
 enum MessageType {
   text,
   image,
@@ -39,6 +42,8 @@ class ReplyPreview {
       };
 }
 
+/// Unified Message model for both 1-to-1 and group chats
+/// Consolidates message.dart and chat_message.dart functionality
 class Message {
   final String id;
   final String role;
@@ -48,6 +53,12 @@ class Message {
   final MessageStatus status;
   final String? serverId;
   final ReplyPreview? replyTo;
+  
+  // Group chat fields (from chat_message.dart)
+  final String? senderId;
+  final String? senderName;
+  final String? avatarUrl;
+  final bool? isAi;
 
   Message({
     required this.id,
@@ -58,9 +69,21 @@ class Message {
     this.status = MessageStatus.sent,
     this.serverId,
     this.replyTo,
+    this.senderId,
+    this.senderName,
+    this.avatarUrl,
+    this.isAi,
   });
 
+  // Helper getters
   bool get hasReplyPreview => replyTo != null && replyTo!.content.isNotEmpty;
+  bool get isUser => role == 'user';
+  bool get isAssistant => role == 'assistant';
+  bool get isMe => role == 'user';  // Alias for compatibility
+  
+  // Group chat helpers
+  bool get hasAvatar => avatarUrl != null && avatarUrl!.isNotEmpty;
+  bool get hasSenderName => senderName != null && senderName!.isNotEmpty;
 
   factory Message.fromJson(Map<String, dynamic> json) {
     MessageType type;
@@ -85,7 +108,7 @@ class Message {
     final traceId = json['traceId'] ??
         json['id']?.toString() ??
         DateTime.now().millisecondsSinceEpoch.toString();
-    final createdAtValue = json['created_at'] ?? json['createdAt'];
+    final createdAtValue = json['created_at'] ?? json['createdAt'] ?? json['timestamp'];
     final parsedTimestamp = createdAtValue != null
         ? DateTime.tryParse(createdAtValue.toString())
         : null;
@@ -104,8 +127,27 @@ class Message {
       timestamp: timestamp,
       serverId: serverId,
       replyTo: replyPreview,
+      // Group chat fields
+      senderId: json['sender_id']?.toString(),
+      senderName: json['sender_name']?.toString(),
+      avatarUrl: json['avatar']?.toString(),
+      isAi: json['is_ai'] as bool?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'role': role,
+        'type': type.name,
+        'content': content,
+        'created_at': timestamp.toIso8601String(),
+        if (serverId != null) 'serverId': serverId,
+        if (replyTo != null) 'reply_preview': replyTo!.toJson(),
+        if (senderId != null) 'sender_id': senderId,
+        if (senderName != null) 'sender_name': senderName,
+        if (avatarUrl != null) 'avatar': avatarUrl,
+        if (isAi != null) 'is_ai': isAi,
+      };
 
   Message copyWith({
     String? id,
@@ -116,6 +158,10 @@ class Message {
     MessageStatus? status,
     String? serverId,
     ReplyPreview? replyTo,
+    String? senderId,
+    String? senderName,
+    String? avatarUrl,
+    bool? isAi,
   }) {
     return Message(
       id: id ?? this.id,
@@ -126,9 +172,19 @@ class Message {
       status: status ?? this.status,
       serverId: serverId ?? this.serverId,
       replyTo: replyTo ?? this.replyTo,
+      senderId: senderId ?? this.senderId,
+      senderName: senderName ?? this.senderName,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      isAi: isAi ?? this.isAi,
     );
   }
 
-  bool get isUser => role == 'user';
-  bool get isAssistant => role == 'assistant';
+  // Factory for WebSocket messages (from chat_message.dart)
+  factory Message.fromSocket(String raw) {
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return Message.fromJson(decoded);
+  }
 }
+
+
+

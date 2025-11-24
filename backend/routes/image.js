@@ -3,7 +3,8 @@ const logToFile = require("../utils/log");
 const { writeFile } = require("fs/promises");
 const { v4: uuidv4 } = require('uuid');
 const storageService = require('../services/supabase-storage');
-const generatePrompt = require('./openRouterServiceForPrompt');
+const { supabase } = require('../lib/supabase');
+const generatePrompt = require('./promptGenerator');
 
 const generateImage = async (prompt, girlfriend = null, userId = null, language = 'en') => {
     const replicate = new Replicate({
@@ -37,7 +38,7 @@ const generateImage = async (prompt, girlfriend = null, userId = null, language 
     let enhancedPrompt;
     try {
         console.log('🎨 Original prompt:', contextPrompt);
-        enhancedPrompt = await generatePrompt(contextPrompt, language);
+        enhancedPrompt = await generatePrompt(contextPrompt, 'image', { language });
         console.log('✨ Enhanced prompt:', enhancedPrompt);
     } catch (error) {
         console.error('Error enhancing prompt, using original:', error);

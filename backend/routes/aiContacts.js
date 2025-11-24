@@ -26,13 +26,22 @@ router.get('/ai/list', async (req, res) => {
 
         if (aiErr) throw aiErr;
 
-        // Recupera anche le girlfriends dell'utente (per compatibilità)
-        const { data: girlfriends, error: gfErr } = await supabase
+        // Recupera le proprie girlfriends
+        const { data: myGirlfriends, error: gfErr } = await supabase
             .from('girlfriends')
-            .select('id, name, avatar_url, personality_type, tone, age, gender')
+            .select('id, name, avatar_url, personality_type, tone, age, gender, is_public, user_id')
             .eq('user_id', userId);
 
         if (gfErr) throw gfErr;
+
+        // Recupera girlfriends pubbliche di altri utenti
+        const { data: publicGirlfriends, error: pubGfErr } = await supabase
+            .from('girlfriends')
+            .select('id, name, avatar_url, personality_type, tone, age, gender, is_public, user_id')
+            .eq('is_public', true)
+            .neq('user_id', userId);
+
+        if (pubGfErr) throw pubGfErr;
 
         // Combina i risultati
         const allAi = [
@@ -50,7 +59,7 @@ router.get('/ai/list', async (req, res) => {
                 rating: ai.rating,
                 description: ai.description
             })),
-            ...girlfriends.map(gf => ({
+            ...myGirlfriends.map(gf => ({
                 id: gf.id,
                 name: gf.name,
                 avatar: gf.avatar_url,
@@ -58,8 +67,20 @@ router.get('/ai/list', async (req, res) => {
                 tone: gf.tone,
                 age: gf.age,
                 gender: gf.gender,
-                isPublic: false,
+                isPublic: gf.is_public || false,
                 isOwned: true,
+                type: 'girlfriend'
+            })),
+            ...publicGirlfriends.map(gf => ({
+                id: gf.id,
+                name: gf.name,
+                avatar: gf.avatar_url,
+                personality: gf.personality_type,
+                tone: gf.tone,
+                age: gf.age,
+                gender: gf.gender,
+                isPublic: true,
+                isOwned: false,
                 type: 'girlfriend'
             }))
         ];

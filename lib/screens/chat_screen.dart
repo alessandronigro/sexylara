@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,8 +16,10 @@ import '../services/chat_service.dart';
 import '../services/girlfriend_service.dart';
 import '../services/conversation_service.dart';
 import '../services/supabase_service.dart';
-import '../widgets/message_bubble.dart';
+import '../widgets/unified_message_bubble.dart';
 import '../widgets/girlfriend_avatar.dart';
+import '../widgets/recording_button.dart';
+import '../services/audio_recorder_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String girlfriendId;
@@ -44,6 +47,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Girlfriend? _girlfriend;
   Message? _replyingMessage;
   bool _photoUploading = false;
+  final _audioRecorder = AudioRecorderService();
+  bool _isRecording = false;
 
   @override
   void initState() {
@@ -121,6 +126,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _controller.dispose();
     _inputFocusNode.dispose();
     _scrollController.dispose();
+    _audioRecorder.dispose();
     super.dispose();
   }
 
@@ -227,6 +233,146 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Errore eliminazione: $error')),
+        );
+      }
+    }
+  }
+
+  // ===== AUDIO RECORDING METHODS =====
+  
+  Future<void> _startRecording() async {
+    final success = await _audioRecorder.startRecording();
+    if (success) {
+      setState(() {
+        _isRecording = true;
+      });
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossibile avviare la registrazione. Controlla i permessi del microfono.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecordingAndSend() async {
+    final audioPath = await _audioRecorder.stopRecording();
+    setState(() {
+      _isRecording = false;
+    });
+
+    if (audioPath != null) {
+      await _sendAudioMessage(audioPath);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Errore durante il salvataggio della registrazione'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    await _audioRecorder.cancelRecording();
+    setState(() {
+      _isRecording = false;
+    });
+  }
+
+  Future<void> _sendAudioMessage(String audioPath) async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+
+    // Create optimistic message
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final tempMessage = Message(
+      id: tempId,
+      role: 'user',
+      type: MessageType.audio,
+      content: audioPath,
+      timestamp: DateTime.now(),
+      status: MessageStatus.sending,
+    );
+
+    setState(() {
+      _messages.add(tempMessage);
+    });
+    _scrollToBottom();
+
+    try {
+      // Read audio file and encode to base64
+      final file = File(audioPath);
+      final bytes = await file.readAsBytes();
+      final audioBase64 = base64Encode(bytes);
+
+      // Upload to backend
+      final payload = jsonEncode({
+        'userId': userId,
+        'girlfriendId': widget.girlfriendId,
+        'filename': 'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
+        'audioBase64': audioBase64,
+      });
+
+      final response = await http.post(
+        Uri.parse('${app_config.Config.apiBaseUrl}/api/audio/upload'),
+        headers: {'Content-Type': 'application/json'},
+        body: payload,
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Errore ${response.statusCode}');
+      }
+
+      final data = jsonDecode(response.body);
+      final audioUrl = data['url'];
+
+      // Send via WebSocket with mediaType and mediaUrl
+      _chatService.sendMessage(
+        '🎤 Messaggio vocale',
+        girlfriendId: widget.girlfriendId,
+        mediaType: 'audio',
+        mediaUrl: audioUrl,
+      );
+
+      // Update message status
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == tempId);
+        if (index != -1) {
+          _messages[index] = tempMessage.copyWith(
+            status: MessageStatus.sent,
+            content: audioUrl,
+          );
+        }
+      });
+
+      // Delete temporary file
+      await file.delete();
+
+    } catch (e) {
+      debugPrint('❌ Error sending audio: $e');
+      
+      // Update message status to error
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == tempId);
+        if (index != -1) {
+          _messages[index] = tempMessage.copyWith(
+            status: MessageStatus.error,
+          );
+        }
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore invio audio: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -458,9 +604,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (index == _messages.length && _currentStatus.isNotEmpty) {
                   return const TypingIndicator();
                 }
-                return MessageBubble(
-                  message: _messages[index],
-                  onLongPress: () => _showMessageOptions(_messages[index]),
+                final msg = _messages[index];
+                return GestureDetector(
+                  onLongPress: () => _showMessageOptions(msg),
+                  child: UnifiedMessageBubble(
+                    content: msg.content,
+                    type: msg.type == MessageType.text ? MessageType.text :
+                          msg.type == MessageType.image ? MessageType.image :
+                          msg.type == MessageType.video ? MessageType.video :
+                          msg.type == MessageType.audio ? MessageType.audio : MessageType.text,
+                    isMe: msg.isUser,
+                    timestamp: msg.timestamp,
+                    mediaUrl: msg.type != MessageType.text ? msg.content : null,
+                  ),
                 );
               },
             ),
@@ -558,66 +714,77 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                   // Input row (moved inside SafeArea/Column)
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.photo_camera, color: Colors.pinkAccent),
-                        onPressed: _photoUploading ? null : _showPhotoSourceOptions,
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: _controller,
-                          focusNode: _inputFocusNode,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Scrivi un messaggio...',
-                            hintStyle: TextStyle(color: Colors.grey[600]),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
+                  // Show recording UI when recording, otherwise show normal input
+                  if (_isRecording)
+                    RecordingButton(
+                      isRecording: _isRecording,
+                      onStartRecording: _startRecording,
+                      onStopRecording: _stopRecordingAndSend,
+                      onCancelRecording: _cancelRecording,
+                    )
+                  else
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.photo_camera, color: Colors.pinkAccent),
+                          onPressed: _photoUploading ? null : _showPhotoSourceOptions,
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _inputFocusNode,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: 'Scrivi un messaggio...',
+                              hintStyle: TextStyle(color: Colors.grey[600]),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey[900],
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 10),
                             ),
-                            filled: true,
-                            fillColor: Colors.grey[900],
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 10),
+                            onSubmitted: (_) => _sendMessage(),
                           ),
-                          onSubmitted: (_) => _sendMessage(),
                         ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                            _showEmojiPicker
-                                ? Icons.keyboard
-                                : Icons.emoji_emotions_outlined,
-                            color: Colors.pinkAccent),
-                        onPressed: () {
-                          setState(() {
-                            _showEmojiPicker = !_showEmojiPicker;
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      CircleAvatar(
-                        backgroundColor: Colors.pinkAccent,
-                        child: IconButton(
-                          icon: _sending || _photoUploading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.send,
-                                  color: Colors.white, size: 20),
-                          onPressed: _sending || _photoUploading
-                              ? null
-                              : _sendMessage,
+                        // Mic button (replaces emoji button when not recording)
+                        IconButton(
+                          icon: const Icon(Icons.mic, color: Colors.pinkAccent),
+                          onPressed: _startRecording,
                         ),
-                      ),
-                    ],
-                  ),
+                        IconButton(
+                          icon: Icon(
+                              _showEmojiPicker
+                                  ? Icons.keyboard
+                                  : Icons.emoji_emotions_outlined,
+                              color: Colors.pinkAccent),
+                          onPressed: () {
+                            setState(() {
+                              _showEmojiPicker = !_showEmojiPicker;
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        CircleAvatar(
+                          backgroundColor: Colors.pinkAccent,
+                          child: IconButton(
+                            icon: _sending || _photoUploading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.send, color: Colors.white),
+                            onPressed: (_sending || _photoUploading) ? null : _sendMessage,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

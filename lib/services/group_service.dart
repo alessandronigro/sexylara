@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/session_provider.dart';
+import '../config.dart';
 
 final groupServiceProvider = Provider<GroupService>((ref) {
   final session = ref.watch(sessionProvider);
@@ -14,7 +15,7 @@ class GroupService {
   final String userId;
   GroupService({required this.userId});
 
-  String get _base => const String.fromEnvironment('API_BASE_URL');
+  String get _base => Config.apiBaseUrl;
 
   Future<List<dynamic>> fetchGroups() async {
     final resp = await http.get(Uri.parse('$_base/groups'), headers: {'x-user-id': userId});
@@ -64,56 +65,69 @@ class GroupService {
     }
   }
 
-  // --- INVITE METHODS ---
+  // --- NEW INVITE METHODS ---
 
-  Future<void> inviteMember({
+  Future<void> inviteUser({
     required String groupId,
-    required String invitedId,
-    required String invitedType, // 'user' or 'ai'
-    String? message,
+    required String receiverId,
   }) async {
     final resp = await http.post(
-      Uri.parse('$_base/group/invite'),
+      Uri.parse('$_base/group/invite/user'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({
         'groupId': groupId,
-        'invitedId': invitedId,
-        'invitedType': invitedType,
-        'message': message,
+        'senderId': userId,
+        'receiverId': receiverId,
       }),
     );
 
     if (resp.statusCode != 200) {
       final err = jsonDecode(resp.body);
-      throw Exception(err['error'] ?? 'Failed to invite member');
+      throw Exception(err['error'] ?? 'Failed to invite user');
     }
   }
 
-  Future<void> acceptInvite(String inviteId) async {
+  Future<Map<String, dynamic>> inviteNpc({
+    required String groupId,
+    required String npcId,
+  }) async {
     final resp = await http.post(
-      Uri.parse('$_base/group/invite/accept'),
+      Uri.parse('$_base/group/invite/npc'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
-      body: jsonEncode({'inviteId': inviteId}),
+      body: jsonEncode({
+        'groupId': groupId,
+        'senderId': userId,
+        'npcId': npcId,
+      }),
     );
 
     if (resp.statusCode != 200) {
-      throw Exception('Failed to accept invite');
+      final err = jsonDecode(resp.body);
+      throw Exception(err['error'] ?? 'Failed to invite NPC');
     }
+    
+    return jsonDecode(resp.body); // Returns status and reason
   }
 
-  Future<void> declineInvite(String inviteId) async {
+  Future<void> respondToInvite(String inviteId, bool accept) async {
     final resp = await http.post(
-      Uri.parse('$_base/group/invite/decline'),
+      Uri.parse('$_base/group/invite/respond'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
-      body: jsonEncode({'inviteId': inviteId}),
+      body: jsonEncode({
+        'inviteId': inviteId,
+        'userId': userId,
+        'accept': accept,
+      }),
     );
 
     if (resp.statusCode != 200) {
-      throw Exception('Failed to decline invite');
+      throw Exception('Failed to respond to invite');
     }
   }
 
   Future<List<dynamic>> fetchPendingInvites() async {
+    // Assuming backend has this endpoint or we need to add it. 
+    // For now, let's assume standard GET /group/invites/pending
     final resp = await http.get(
       Uri.parse('$_base/group/invites/pending'),
       headers: {'x-user-id': userId},

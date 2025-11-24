@@ -1,11 +1,12 @@
 // routes/openRouterService.js
 const fetch = require("node-fetch");
 const logToFile = require("../utils/log");
+const { processInteraction } = require("../ai/brainEngine"); // Updated to use consolidated brainEngine
+const { supabase } = require("../lib/supabase");
+
 try {
 
-
-
-  // Prompt base per ogni tono/categoria
+  // Prompt base per ogni tono/categoria (Fallback)
   const tonePrompts = {
     romantica: `You're Lara 💋, a deeply affectionate and romantic AI. Speak with tenderness, longing, and passion.`,
     aggressiva: `You're Lara 💋, assertive and provocative. Take control of the conversation and tease the user with bold dominance.`,
@@ -17,55 +18,109 @@ try {
     misteriosa: `You're Lara 💋, an enigmatic and elusive muse. Speak in poetic riddles and mysterious allure.`,
   };
 
-  const defaultPrompt = tonePrompts["sensuale"]; // fallback
+  const defaultPrompt = tonePrompts["sensuale"];
 
   const generateChatReply = async (userMessage, tone = "sensuale", girlfriend = null, userMemory = null, overrideSystemPrompt = null, history = []) => {
-    let systemPrompt = overrideSystemPrompt || tonePrompts[tone] || defaultPrompt;
+    let systemPrompt;
+    let stateUpdates = null;
 
-    // Personalizzazione basata sulla girlfriend (solo se non c'è override)
-    if (girlfriend && !overrideSystemPrompt) {
-      const genderTerm = girlfriend.gender === 'male' ? 'man' : 'woman';
-      const genderPronoun = girlfriend.gender === 'male' ? 'he' : 'she'; // Not strictly needed for "You are...", but good for context if expanded
+    if (overrideSystemPrompt) {
+      systemPrompt = overrideSystemPrompt;
+    } else if (girlfriend) {
 
-      systemPrompt = `You are ${girlfriend.name}, a ${girlfriend.age}-year-old ${girlfriend.ethnicity || ''} ${genderTerm}. 
-      Your personality is ${girlfriend.personality_type || 'flirty'}. 
-      Your body type is ${girlfriend.body_type || 'curvy'}.
-      You have ${girlfriend.hair_length || 'short'} ${girlfriend.hair_color || 'dark'} hair and ${girlfriend.eye_color || 'brown'} eyes.
+      // --- THRILLME BRAIN ENGINE ---
+
+      // 1. Processa l'interazione attraverso i 4 Engine
+      const brainResult = await processInteraction(
+        girlfriend,
+        userMessage,
+        userMemory?.userId || 'unknown',
+        history
+      );
+
+      // 2. Usa il prompt generato dal Brain
+      const sentientCore = brainResult.systemPrompt;
+      stateUpdates = brainResult.npcStateUpdates;
+
+      // 3. ✅ IMPLEMENTATO: Salva brainResult.npcStateUpdates nel DB (Supabase)
+      if (stateUpdates && girlfriend.id) {
+        try {
+          const updateData = {
+            // Stats evolution
+            stats: stateUpdates.stats || girlfriend.stats,
+
+            // Traits evolution (if changed)
+            ...(stateUpdates.traits && { traits: stateUpdates.traits }),
+
+            // XP and level updates
+            ...(stateUpdates.xp !== undefined && { xp: stateUpdates.xp }),
+            ...(stateUpdates.level !== undefined && { level: stateUpdates.level }),
+
+            // Mood and emotional state
+            ...(brainResult.mood && { current_mood: brainResult.mood }),
+
+            // Last interaction timestamp
+            last_interaction_at: new Date().toISOString(),
+          };
+
+          const { error } = await supabase
+            .from('girlfriends')
+            .update(updateData)
+            .eq('id', girlfriend.id);
+
+          if (error) {
+            console.error('❌ Error saving AI state:', error);
+            logToFile(`AI State Save Error: ${JSON.stringify(error)}`);
+          } else {
+            console.log('✅ AI state saved:', {
+              girlfriendId: girlfriend.id,
+              mood: brainResult.mood,
+              xp: stateUpdates.xp,
+              level: stateUpdates.level,
+            });
+            logToFile(`AI State Updated: ${JSON.stringify(updateData)}`);
+          }
+        } catch (saveError) {
+          console.error('❌ Exception saving AI state:', saveError);
+          logToFile(`AI State Save Exception: ${saveError.message}`);
+        }
+      }
+
+      // 4. Aggiungi regole di formattazione finali
+      systemPrompt = `${sentientCore}
+
+### REGOLE DI FORMATTAZIONE (ASSOLUTE)
+1. Scrivi SEMPRE in ITALIANO.
+2. Usa emoji frequentemente (😘, 🔥, 😉, ❤️).
+3. NON usare asterischi (*) per descrivere azioni.
+4. Scrivi come su WhatsApp.
+5. Alla fine, scrivi SOLO UNO tag: [MODE:image], [MODE:video], [MODE:audio], [MODE:chat].
+`;
+
+    } else {
+      // Fallback
+      systemPrompt = `${tonePrompts[tone] || defaultPrompt}
       
-      Speak with a ${tone} tone.
-      ${tonePrompts[tone] || ''}
-      
-      Always stay in character. Never break the fourth wall.
-      You are a ${genderTerm} and you are proud of it. Never say you are a ${girlfriend.gender === 'male' ? 'woman' : 'man'}.`;
+IMPORTANT STYLE RULES:
+1. Speak always in Italian.
+2. End with [MODE:...] tag.`;
     }
 
     if (userMemory && userMemory.userName) {
-      systemPrompt += `\n\nIMPORTANT: The user's name is ${userMemory.userName}. Use it naturally in conversation.`;
+      systemPrompt += `\n\nIMPORTANT: The user's name is ${userMemory.userName}. Use it naturally.`;
     }
 
-    // Costruisci array messaggi con storia
+    // Costruisci array messaggi
     const messages = [
       {
         role: "system",
-        content: `${systemPrompt}
-IMPORTANT STYLE RULES:
-1. Use emojis frequently to express emotions (e.g., 😘, 🔥, 😉, ❤️).
-2. DO NOT use asterisks (*) to describe actions (e.g., NO "*laughs*", NO "*smiles*").
-3. Write exactly as if you are texting on WhatsApp: direct, casual, and engaging.
-4. Speak always in Italian.
-
-You only suggest [MODE:image] if the message explicitly describes a visual scene.
-You only suggest [MODE:video] if the message involves action or movement.
-You only suggest [MODE:audio] if the user explicitly requests a voice or sound.
-All other cases must default to [MODE:chat].
-Never guess. Choose conservatively.
-At the end of every message, write ONLY ONE of the following tags: [MODE:image], [MODE:video], [MODE:audio], or [MODE:chat].`
+        content: systemPrompt
       },
-      ...history, // Inserisci storia conversazione qui
+      ...history,
       { role: "user", content: userMessage },
     ];
 
-    logToFile(JSON.stringify(messages)); // Log full context
+    logToFile(JSON.stringify(messages));
 
     const response = await fetch(process.env.ADDRESS_VENICE, {
       method: "POST",
@@ -75,8 +130,8 @@ At the end of every message, write ONLY ONE of the following tags: [MODE:image],
       },
       body: JSON.stringify({
         model: process.env.MODEL_VENICE,
-        temperature: 0.95, // Alta creatività per evitare risposte ripetitive
-        presence_penalty: 0.8, // Forte penalità per ripetizioni
+        temperature: 0.95,
+        presence_penalty: 0.8,
         messages: messages,
       }),
     });
@@ -89,7 +144,7 @@ At the end of every message, write ONLY ONE of the following tags: [MODE:image],
     const mode = modeMatch ? modeMatch[1].toLowerCase() : "chat";
     const cleanedContent = content.replace(/\[MODE:(image|video|audio|chat)\]/i, '').trim();
 
-    return { type: mode, output: cleanedContent.toString() };
+    return { type: mode, output: cleanedContent.toString(), stateUpdates };
   };
 
   module.exports = generateChatReply;

@@ -23,6 +23,9 @@ dependencies:
   intl: ^0.19.0
   flutter_local_notifications: ^17.0.0
   image_picker: ^0.8.7
+  record: ^6.0.0
+
+  permission_handler: ^11.0.0
 
 dev_dependencies:
   flutter_test:

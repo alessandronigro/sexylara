@@ -4,7 +4,7 @@ const fetch = require("node-fetch");
 const logToFile = require("../utils/log");
 const imageUrlToBase64 = require("../utils/imageToBase64");
 const { writeFile } = require("fs/promises");
-const generatePromptVideo = require("./openRouterServiceForVideo");
+const generatePrompt = require("./promptGenerator");
 const storageService = require('../services/supabase-storage');
 
 const group_id = 1943287634835017980;
@@ -28,7 +28,7 @@ const video = async (prompt, girlfriend = null, chatHistory = [], userId = null,
         let enhancedPrompt;
         try {
             console.log('🎬 Original video request:', prompt);
-            enhancedPrompt = await generatePromptVideo(prompt, chatHistory);
+            enhancedPrompt = await generatePrompt(prompt, 'video', { chatHistory });
             console.log('✨ Enhanced video prompt:', enhancedPrompt);
         } catch (error) {
             console.error('Error enhancing video prompt:', error);
