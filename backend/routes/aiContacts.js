@@ -28,7 +28,7 @@ router.get('/ai/list', async (req, res) => {
 
         // Recupera le proprie girlfriends
         const { data: myGirlfriends, error: gfErr } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .select('id, name, avatar_url, personality_type, tone, age, gender, is_public, user_id')
             .eq('user_id', userId);
 
@@ -36,7 +36,7 @@ router.get('/ai/list', async (req, res) => {
 
         // Recupera girlfriends pubbliche di altri utenti
         const { data: publicGirlfriends, error: pubGfErr } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .select('id, name, avatar_url, personality_type, tone, age, gender, is_public, user_id')
             .eq('is_public', true)
             .neq('user_id', userId);
@@ -132,9 +132,14 @@ router.get('/ai/public', async (req, res) => {
 // ===============================================================
 const crypto = require('crypto');
 
+const { generateNpcVoiceMaster } = require('../services/voiceGenerator');
+
 router.post('/ai/create', async (req, res) => {
     const userId = req.headers['x-user-id'];
-    const { name, avatar, personality, style, tone, age, gender, isPublic, description } = req.body;
+    const {
+        name, avatar, personality, style, tone, age, gender, isPublic, description,
+        energy, speaking_speed, shyness, confidence, accent // Additional fields
+    } = req.body;
 
     if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
@@ -146,6 +151,30 @@ router.post('/ai/create', async (req, res) => {
 
     try {
         const aiId = crypto.randomUUID();
+
+        // Prepare NPC object for voice generation
+        const npcData = {
+            name,
+            age: age || 25,
+            gender: gender || 'female',
+            tone_mode: tone || 'soft', // Map tone to tone_mode
+            energy: energy || 'medium',
+            speaking_speed: speaking_speed || 'normal',
+            shyness: shyness || 0.5,
+            confidence: confidence || 0.5,
+            accent: accent || 'italian',
+            character_traits: personality || []
+        };
+
+        // Generate Voice Master
+        let voiceData = {};
+        try {
+            voiceData = await generateNpcVoiceMaster(npcData);
+            console.log('✅ Voice Master generated:', voiceData.voiceUrl);
+        } catch (voiceError) {
+            console.error('⚠️ Failed to generate voice master:', voiceError);
+            // Continue without voice or set default?
+        }
 
         const { data, error } = await supabase
             .from('ai_contacts')
@@ -160,12 +189,34 @@ router.post('/ai/create', async (req, res) => {
                 age: age || 25,
                 gender: gender || 'female',
                 is_public: isPublic || false,
-                description: description || null
+                description: description || null,
+                // Voice fields
+                voice_master_url: voiceData.voiceUrl || null,
+                voice_profile: voiceData.voiceProfile ? JSON.stringify(voiceData.voiceProfile) : null,
+                voice_engine: voiceData.voiceEngine || null
             })
             .select()
             .single();
 
         if (error) throw error;
+
+        // Initialize Brain Profile with Safe Mode
+        try {
+            const initialProfile = {
+                id: aiId,
+                name,
+                preferences: { mode: 'safe' }
+            };
+            // We use updateNpcProfile which handles upsert logic
+            // But first we might need to ensure getNpcProfile can find it.
+            // Since we just inserted into ai_contacts, getNpcProfile might not find it if it looks in girlfriends.
+            // So we force an insert into npc_profiles directly or use updateNpcProfile if it supports partial updates.
+            // Actually updateNpcProfile does an upsert on npc_profiles.
+            await updateNpcProfile(aiId, initialProfile);
+            console.log('✅ Initialized NPC Brain Profile with Safe Mode');
+        } catch (brainError) {
+            console.warn('⚠️ Failed to initialize NPC Brain Profile:', brainError);
+        }
 
         res.json({ success: true, ai: data });
     } catch (error) {
@@ -322,6 +373,80 @@ router.delete('/ai/:id', async (req, res) => {
         res.json({ success: true, message: 'AI contact deleted' });
     } catch (error) {
         console.error('Error deleting AI contact:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+const { updateNpcProfile, getNpcProfile } = require('../ai/memory/npcRepository');
+
+// ... existing routes ...
+
+// ===============================================================
+// PATCH /api/ai/:id/mode
+// Cambia la modalità (safe/uncensored)
+// ===============================================================
+router.patch('/api/ai/:id/mode', async (req, res) => {
+    const { id } = req.params;
+    const { mode } = req.body; // "safe" | "uncensored"
+    const userId = req.headers['x-user-id'];
+
+    if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    if (!['safe', 'uncensored'].includes(mode)) {
+        return res.status(400).json({ error: 'Invalid mode. Use "safe" or "uncensored".' });
+    }
+
+    try {
+        // 1. Verifica ownership (su ai_contacts o girlfriends)
+        // Proviamo prima ai_contacts
+        let { data: ai, error: fetchErr } = await supabase
+            .from('ai_contacts')
+            .select('id')
+            .eq('id', id)
+            .eq('owner_id', userId)
+            .single();
+
+        if (!ai) {
+            // Prova girlfriends
+            const { data: gf, error: gfErr } = await supabase
+                .from('npcs')
+                .select('id')
+                .eq('id', id)
+                .eq('user_id', userId)
+                .single();
+
+            if (gf) ai = gf;
+        }
+
+        if (!ai) {
+            return res.status(404).json({ error: 'AI not found or not owned by you' });
+        }
+
+        // 2. Aggiorna il profilo cerebrale (npc_profiles)
+        const profile = await getNpcProfile(id, 'NPC');
+        const npcData = profile.data;
+
+        npcData.preferences = npcData.preferences || {};
+        npcData.preferences.mode = mode;
+
+        await updateNpcProfile(id, npcData);
+
+        // 3. Opzionale: prova ad aggiornare anche la tabella girlfriends se ha una colonna prefs/mode
+        // (Ignoriamo errori qui se la colonna non esiste)
+        try {
+            await supabase
+                .from('npcs')
+                .update({ mode: mode }) // Se esiste la colonna mode
+                .eq('id', id);
+        } catch (e) {
+            // ignore
+        }
+
+        res.json({ success: true, mode });
+    } catch (error) {
+        console.error('Error updating AI mode:', error);
         res.status(500).json({ error: error.message });
     }
 });

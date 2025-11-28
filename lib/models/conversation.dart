@@ -1,10 +1,10 @@
-import 'girlfriend.dart';
+import 'npc.dart';
 
 class Conversation {
   final String id;
   final String userId;
-  final String girlfriendId;
-  final Girlfriend? girlfriend;
+  final String npcId;
+  final Npc? npc;
   final DateTime lastMessageAt;
   final String? lastMessagePreview;
   final int unreadCount;
@@ -14,8 +14,8 @@ class Conversation {
   Conversation({
     required this.id,
     required this.userId,
-    required this.girlfriendId,
-    this.girlfriend,
+    required this.npcId,
+    this.npc,
     required this.lastMessageAt,
     this.lastMessagePreview,
     this.unreadCount = 0,
@@ -27,10 +27,12 @@ class Conversation {
     return Conversation(
       id: json['id'],
       userId: json['user_id'],
-      girlfriendId: json['girlfriend_id'],
-      girlfriend: json['girlfriends'] != null
-          ? Girlfriend.fromJson(json['girlfriends'])
-          : null,
+      npcId: json['npc_id'] ?? json['girlfriend_id'] ?? '',
+      npc: json['npcs'] != null
+          ? Npc.fromJson(json['npcs'])
+          : json['girlfriends'] != null
+              ? Npc.fromJson(json['girlfriends'])
+              : null,
       lastMessageAt: DateTime.parse(json['last_message_at']),
       lastMessagePreview: json['last_message_preview'],
       unreadCount: json['unread_count'] ?? 0,
@@ -42,8 +44,8 @@ class Conversation {
   Conversation copyWith({
     String? id,
     String? userId,
-    String? girlfriendId,
-    Girlfriend? girlfriend,
+    String? npcId,
+    Npc? npc,
     DateTime? lastMessageAt,
     String? lastMessagePreview,
     int? unreadCount,
@@ -53,8 +55,8 @@ class Conversation {
     return Conversation(
       id: id ?? this.id,
       userId: userId ?? this.userId,
-      girlfriendId: girlfriendId ?? this.girlfriendId,
-      girlfriend: girlfriend ?? this.girlfriend,
+      npcId: npcId ?? this.npcId,
+      npc: npc ?? this.npc,
       lastMessageAt: lastMessageAt ?? this.lastMessageAt,
       lastMessagePreview: lastMessagePreview ?? this.lastMessagePreview,
       unreadCount: unreadCount ?? this.unreadCount,
@@ -62,4 +64,5 @@ class Conversation {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
 }

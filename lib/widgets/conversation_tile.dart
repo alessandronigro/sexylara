@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/conversation.dart';
-import 'girlfriend_avatar.dart';
+import 'npc_avatar.dart'; // still uses Npc model; reuse for NPC
 
 class ConversationTile extends StatelessWidget {
   final Conversation conversation;
   final VoidCallback onTap;
 
+  // Mostra una conversazione con avatar, nome, anteprima e badge non letti.
   const ConversationTile({
     super.key,
     required this.conversation,
@@ -15,8 +16,8 @@ class ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final companion = conversation.companion;
-    if (girlfriend == null) return const SizedBox.shrink();
+    final npc = conversation.npc;
+    if (npc == null) return const SizedBox.shrink();
 
     return InkWell(
       onTap: onTap,
@@ -24,8 +25,8 @@ class ConversationTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            GirlfriendAvatar(
-              girlfriend: girlfriend,
+            NpcAvatar(
+              npc: npc,
               radius: 28,
               showOnlineIndicator: true,
             ),
@@ -38,7 +39,7 @@ class ConversationTile extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        girlfriend.name,
+                        npc.name,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,

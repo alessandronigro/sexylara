@@ -15,12 +15,35 @@ const generateVideo = require("./routes/video");
 const retrievevideo = require("./routes/retrievevideo");
 const generateAudio = require("./routes/audio");
 const db = require("./routes/db");
-const girlfriendRoutes = require('./routes/girlfriend');
+const npcRoutes = require('./routes/npc');
 const messageRoutes = require('./routes/message');
 const groupRoutes = require('./routes/group');
 const { brainEngine } = require('./ai/brainEngine');
 const wsNotificationService = require('./services/wsNotificationService');
 const MediaGenerationService = require('./services/MediaGenerationService');
+const { getUserPhoto } = require('./ai/media/getUserPhoto');
+const { saveUserPhoto } = require('./ai/media/saveUserPhoto');
+const { askPhoto, captions } = require('./ai/language/translations');
+const { thinkInGroup, detectInvokedNpcId } = require("./ai/GroupBrainEngine");
+const { checkForInitiative } = require('./ai/scheduler/NpcInitiativeEngine');
+const pendingCouplePhoto = new Map();
+
+function resolveNpcAvatar(npc) {
+  if (!npc) return null;
+  return npc.avatar_url || npc.avatar || npc.image_reference || null;
+}
+
+async function ensureNpcImageForMedia(npc) {
+  const direct = resolveNpcAvatar(npc);
+  if (direct) return direct;
+  try {
+    const prompt = `Portrait photo of ${npc?.name || 'the NPC'}, photorealistic, warm lighting`;
+    return await generateAvatar(prompt, npc?.id || npc?.npc_id || null);
+  } catch (err) {
+    console.error('❌ Unable to generate NPC image for media:', err?.message);
+    return null;
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -28,7 +51,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Register routes
-app.use('/girlfriends', girlfriendRoutes);
+app.use('/girlfriends', npcRoutes); // legacy path
+app.use('/npcs', npcRoutes);
 app.use('/messages', messageRoutes);
 app.use('/groups', groupRoutes);
 
@@ -36,11 +60,21 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
 const { analyzeText } = require('./lib/analyzeUserInput');
 const { getUserPreferences, updateUserMemory } = require("./lib/userMemory");
+const userSockets = new Map();
+
+// Scheduler per iniziative NPC ogni 5 minuti
+setInterval(async () => {
+  try {
+    await checkForInitiative(userSockets);
+  } catch (err) {
+    console.error('❌ NPC initiative scheduler error:', err?.message);
+  }
+}, 5 * 60 * 1000);
 
 
-async function saveMessage({ user_id, session_id, role, type, content, girlfriend_id }) {
+async function saveMessage({ user_id, session_id, role, type, content, npc_id }) {
   const data = { user_id, session_id, role, type, content };
-  if (girlfriend_id) data.girlfriend_id = girlfriend_id;
+  if (npc_id) data.npc_id = npc_id;
   const { data: result, error } = await supabase
     .from('messages')
     .insert(data)
@@ -70,13 +104,14 @@ function splitIntoChunks(text, maxLength = 250) {
 }
 
 app.post('/generate-avatar', async (req, res) => {
-  const { prompt, girlfriendId } = req.body;
-  console.log('🎨 Generate avatar request:', { prompt: prompt?.substring(0, 50), girlfriendId });
+  const { prompt, npcId: bodyNpcId, faceImageUrl } = req.body;
+  const npcId = bodyNpcId || req.body.girlfriendId; // legacy fallback
+  console.log('🎨 Generate avatar request:', { prompt: prompt?.substring(0, 50), npcId });
 
   if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
   try {
-    const result = await generateAvatar(prompt, girlfriendId);
+    const result = await generateAvatar(prompt, npcId, faceImageUrl);
     console.log('✅ Avatar generated:', { result: result?.substring(0, 100), isSupabase: result?.startsWith('http') });
 
     // If result starts with http, it's a full URL (Supabase), otherwise it's a filename (local fallback)
@@ -92,6 +127,7 @@ wss.on('connection', (ws, req) => {
   const fullUrl = `http://${req.headers.host}${req.url}`;
   const url = new URL(fullUrl);
   const userId = url.searchParams.get('user_id');
+  const npcIdFromQuery = url.searchParams.get('npc_id') || null;
 
   if (!userId) {
     ws.close(1008, 'Missing user_id');
@@ -102,12 +138,17 @@ wss.on('connection', (ws, req) => {
 
   // ✅ Register connection for notifications
   wsNotificationService.registerConnection(userId, ws);
+  ws.npc_id = npcIdFromQuery;
+  userSockets.set(userId, ws);
+  ws.on('close', () => {
+    userSockets.delete(userId);
+  });
 
   ws.on('message', async (msg) => {
     const sessionId = new Date().toISOString().slice(0, 10);
     const parsed = JSON.parse(msg.toString());
-    const { text, traceId, girlfriend_id, group_id, mediaType, mediaUrl } = parsed;
-    console.log('📨 Messaggio ricevuto:', { text, traceId, girlfriend_id, group_id, mediaType, mediaUrl, userId });
+    const { text, traceId, npc_id, group_id, mediaType, mediaUrl } = parsed;
+    console.log('📨 Messaggio ricevuto:', { text, traceId, npc_id, group_id, mediaType, mediaUrl, userId });
 
     try {
       // ========================================
@@ -141,14 +182,14 @@ wss.on('connection', (ws, req) => {
           isGroup: true
         }));
 
-        // Recupera i membri AI del gruppo (supporta sia member_id che girlfriend_id per compatibilità)
+        // Recupera i membri AI del gruppo (supporta sia member_id che npc_id per compatibilità)
         const { data: members, error: membersError } = await supabase
           .from('group_members')
           .select(`
             member_id,
             member_type,
-            girlfriend_id,
-            girlfriends (
+            npc_id,
+            npcs (
               id,
               name,
               gender,
@@ -206,8 +247,8 @@ wss.on('connection', (ws, req) => {
         const messageHistory = (recentMessages || [])
           .reverse()
           .map(m => {
-            const sender = members.find(mem => mem.girlfriends.id === m.sender_id);
-            const senderName = sender ? sender.girlfriends.name : (userProfile?.name || 'Utente');
+            const sender = members.find(mem => mem.npcs.id === m.sender_id);
+            const senderName = sender ? sender.npcs.name : (userProfile?.name || 'Utente');
             return `${senderName}: ${m.content}`;
           })
           .join('\n');
@@ -221,97 +262,94 @@ wss.on('connection', (ws, req) => {
 
         // Genera risposte per ogni AI nel gruppo
         let responseCount = 0;
-        // Costruisci dati del gruppo per il prompt (una volta sola)
-        const groupData = {
-          name: 'Gruppo',
-          members: members.map(m => ({
-            name: m.girlfriends.name,
-            isAI: true,
-            role: _determineGroupRole(m.girlfriends, groupMemory?.dynamics),
-            personality: m.girlfriends.personality_type,
-            style: m.girlfriends.tone
-          })),
-          recentMessages: (recentMessages || []).reverse().map(m => {
-            const sender = members.find(mem => mem.girlfriends.id === m.sender_id);
-            return {
-              senderName: sender ? sender.girlfriends.name : (m.sender_id === userId ? (userProfile?.name || 'Utente') : 'Sconosciuto'),
-              content: m.content
-            };
-          }),
-          memory: groupMemory || {}
-        };
-        // Aggiungi l'utente alla lista membri per il prompt
-        groupData.members.push({
-          name: userProfile?.name || 'Utente',
-          isAI: false
-        });
+
+        // Detect if any NPC is explicitly invoked
+        const invokedNpcId = detectInvokedNpcId(text, members);
 
         for (const member of members) {
-          const ai = member.girlfriends;
+          const ai = member.npcs;
           try {
-            // Check if user is requesting an image
-            if (userWantsImage(text)) {
-              console.log(`📸 User requested image from ${ai.name}`);
-              const imageUrl = await generateAiProfileImage(ai, text);
-              if (imageUrl) {
-                // Save image message
-                const { data: imgMsg } = await supabase
-                  .from('group_messages')
-                  .insert({
-                    group_id,
-                    sender_id: ai.id,
-                    content: imageUrl,
-                    type: 'image'
-                  })
-                  .select('id')
-                  .single();
+            console.log(`🧠 Using GroupBrainEngine for ${ai.name}...`);
 
-                // Send via WebSocket
-                ws.send(JSON.stringify({
-                  traceId,
-                  role: 'assistant',
-                  type: 'group_message',
-                  content: imageUrl,
-                  sender_id: ai.id,
-                  sender_name: ai.name,
-                  avatar: ai.avatar_url || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(ai.name),
-                  group_id,
-                  messageId: imgMsg?.id,
-                  is_image: true
-                }));
+            // Use GroupBrainEngine
+            const result = await thinkInGroup({
+              npcId: ai.id,
+              groupId: group_id,
+              userMessage: text,
+              history: recentMessages || [],
+              invokedNpcId: invokedNpcId
+            });
 
-                continue; // Skip text response for this AI
-              }
-            }
-
-            // 2. Genera risposta intelligente con Brain Engine
-            console.log(`🧠 Using Brain Engine for ${ai.name}...`);
-
-            const response = await brainEngine.generateIntelligentResponse(
-              ai,
-              userProfile,
-              text,
-              {
-                id: group_id,
-                name: groupData.name,
-                members: members
-              },
-              recentMessages || [],
-              generateChatReply
-            );
-
-            const output = response.output;
-
-            // Se l'AI decide di non rispondere, salta
-            if (!output || output.trim().toUpperCase() === 'SKIP' || output.length < 2) {
-              console.log(`⏭️ ${ai.name} ha deciso di non rispondere`);
+            if (result.silent) {
+              console.log(`⏭️ ${ai.name} stays silent.`);
               continue;
             }
 
-            // Delay per sembrare naturale (variabile in base alla lunghezza)
+            // Handle Media Request
+            if (result.mediaRequest) {
+              console.log(`📸 ${ai.name} wants to send media:`, result.mediaRequest);
+              const generationType = result.mediaRequest.type; // photo, video, audio
+
+              // Notify start
+              const tempId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              ws.send(JSON.stringify({
+                event: 'media_generation_started',
+                tempId,
+                npcId: ai.id,
+                mediaType: generationType,
+                traceId
+              }));
+
+              try {
+                let mediaResult;
+                if (generationType === 'photo') {
+                  mediaResult = await MediaGenerationService.generatePhoto(
+                    ai,
+                    result.mediaRequest.details,
+                    resolveNpcAvatar(ai)
+                  );
+                } else if (generationType === 'video') {
+                  mediaResult = await MediaGenerationService.generateVideo(ai, result.mediaRequest.details);
+                } else if (generationType === 'audio') {
+                  mediaResult = await MediaGenerationService.generateAudio(ai, result.mediaRequest.details);
+                }
+
+                if (mediaResult && mediaResult.url) {
+                  // Save message
+                  const { data: savedMsg } = await supabase.from('group_messages').insert({
+                    group_id,
+                    sender_id: ai.id,
+                    content: mediaResult.url,
+                    type: generationType
+                  }).select('id').single();
+
+                  // Notify complete
+                  ws.send(JSON.stringify({
+                    event: 'media_generation_completed',
+                    tempId,
+                    mediaType: generationType,
+                    finalUrl: mediaResult.url,
+                    caption: mediaResult.caption,
+                    messageId: savedMsg.id,
+                    npcId: ai.id
+                  }));
+
+                  responseCount++;
+                  continue; // Skip text if media sent
+                }
+              } catch (err) {
+                console.error('Media generation failed:', err);
+                // Fallback to text if available
+              }
+            }
+
+            const output = result.text;
+            if (!output) continue;
+
+            // Delay per sembrare naturale
             await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1500));
 
-            // Salva la risposta dell'AI nel gruppo
+            // Salva risposta
             const { data: aiMessage, error: aiMsgError } = await supabase
               .from('group_messages')
               .insert({
@@ -328,11 +366,10 @@ wss.on('connection', (ws, req) => {
               continue;
             }
 
-            // Invia la risposta al client via WebSocket
-            // FIX: Assicurati che l'avatar sia valido
+            // Invia WS
             const avatarUrl = ai.avatar_url && ai.avatar_url.startsWith('http')
               ? ai.avatar_url
-              : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(ai.name) + '&background=random';
+              : resolveNpcAvatar(ai);
 
             ws.send(JSON.stringify({
               traceId,
@@ -341,7 +378,7 @@ wss.on('connection', (ws, req) => {
               content: output,
               sender_id: ai.id,
               sender_name: ai.name,
-              avatar: avatarUrl, // ← Avatar garantito
+              avatar: avatarUrl,
               group_id,
               messageId: aiMessage.id
             }));
@@ -351,7 +388,6 @@ wss.on('connection', (ws, req) => {
 
           } catch (aiError) {
             console.error(`❌ Errore generazione risposta per ${ai.name}:`, aiError);
-            // Continua con gli altri AI anche se uno fallisce
           }
         }
 
@@ -380,7 +416,7 @@ wss.on('connection', (ws, req) => {
         // ========================================
         // INDIVIDUAL CHAT HANDLING (existing code)
         // ========================================
-        console.log('👤 Handling individual chat message for girlfriend:', girlfriend_id);
+        console.log('👤 Handling individual chat message for npc:', npc_id);
 
         const savedUserMessage = await saveMessage({
           user_id: userId,
@@ -388,24 +424,24 @@ wss.on('connection', (ws, req) => {
           role: 'user',
           type: 'text',
           content: text,
-          girlfriend_id,
+          npc_id,
         });
         console.log('💾 User message saved:', savedUserMessage.id);
 
         ws.send(JSON.stringify({ traceId, type: 'ack', serverId: savedUserMessage.id }));
 
-        let girlfriend = null;
-        if (girlfriend_id) {
+        let npc = null;
+        if (npc_id) {
           const { data: gfData, error: gfError } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .select('*')
-            .eq('id', girlfriend_id)
+            .eq('id', npc_id)
             .single();
 
-          if (gfError) console.error('❌ Error fetching girlfriend:', gfError);
-          girlfriend = gfData;
+          if (gfError) console.error('❌ Error fetching npc:', gfError);
+          npc = gfData;
         }
-        console.log('👩 Girlfriend found:', girlfriend ? girlfriend.name : 'None');
+        console.log('👩 NPC found:', npc ? npc.name : 'None');
 
         const userPrefs = await getUserPreferences(userId);
         console.log('⚙️ User prefs loaded');
@@ -415,25 +451,34 @@ wss.on('connection', (ws, req) => {
           .from('messages')
           .select('role, content, created_at')
           .eq('user_id', userId)
-          .eq('girlfriend_id', girlfriend_id)
+          .eq('npc_id', npc_id)
           .order('created_at', { ascending: false })
           .limit(20);
-
-        console.log('🧠 Using Brain Engine for 1-to-1 chat...');
 
         // ===== ANALYZE RECEIVED MEDIA IF PRESENT =====
         let mediaAnalysisContext = '';
         let mediaEmotionalImpact = null;
+        let uploadedUserPhoto = null;
 
         if (mediaType && mediaUrl) {
           console.log(`📥 User sent ${mediaType}, analyzing...`);
+
+          // Salva la foto dell'utente per future richieste di couple photo
+          if (mediaType === 'image') {
+            try {
+              uploadedUserPhoto = await saveUserPhoto(userId, mediaUrl);
+              console.log('💾 User photo saved for profile/couple photo');
+            } catch (err) {
+              console.error('❌ Error saving user photo:', err);
+            }
+          }
 
           try {
             const { MediaUnderstandingEngine } = require('./ai/brainEngine');
             const mediaResult = await MediaUnderstandingEngine.processReceivedMedia(
               mediaType,
               mediaUrl,
-              girlfriend,
+              npc,
               userId
             );
 
@@ -447,10 +492,37 @@ wss.on('connection', (ws, req) => {
             mediaEmotionalImpact = mediaResult.emotionalImpact;
 
             // Update NPC memory
-            MediaUnderstandingEngine.updateNpcMemory(girlfriend, mediaResult.memoryRecord);
+            MediaUnderstandingEngine.updateNpcMemory(npc, mediaResult.memoryRecord);
 
             console.log('✅ Media analyzed:', mediaResult.analysis);
             console.log('💭 Generated reaction:', mediaResult.reaction);
+
+            if (!text || text.trim() === '') {
+              text = mediaResult.reaction || mediaAnalysisContext || `Ho ricevuto il tuo ${mediaType}.`;
+            }
+
+            if (mediaResult?.autoResponseType === "npc_audio") {
+              console.log("🎤 Auto audio reply triggered for NPC:", npc.name);
+
+              const audioIntent = {
+                intent: "AUDIO_AUTO_REPLY",
+                scenePrompt: mediaResult.reaction
+                  || "L'utente ti ha parlato con un tono coinvolgente. Rispondi con un vocale caldo e coerente."
+              };
+
+              // Ensure MediaGenerationService is available or imported correctly
+              // Assuming MediaGenerationService is already required at top of file
+              const audioResult = await MediaGenerationService.generateAudio(npc, audioIntent);
+
+              ws.send(JSON.stringify({
+                type: "npc_audio",
+                url: audioResult.url,
+                caption: audioResult.caption,
+                npc_id: npc.id
+              }));
+
+              console.log("🎤 NPC auto audio sent:", audioResult.url);
+            }
 
             // Use the generated reaction as the AI response
             // (or let the AI generate its own based on the context)
@@ -462,9 +534,51 @@ wss.on('connection', (ws, req) => {
           }
         }
 
+        // Se avevamo una richiesta pendente di couple photo e ora abbiamo la foto utente, genera subito
+        if (pendingCouplePhoto.get(userId) && uploadedUserPhoto && npc) {
+          try {
+            const { generateCouplePhoto } = require('./ai/media/generateCouplePhoto');
+            const npcImageUrl = await ensureNpcImageForMedia(npc);
+            if (!npcImageUrl) {
+              throw new Error('missing npc image for couple photo');
+            }
+            const cp = await generateCouplePhoto({
+              userImageUrl: uploadedUserPhoto,
+              npcImageUrl,
+              npcName: npc.name || 'NPC',
+            });
+
+            pendingCouplePhoto.delete(userId);
+
+            ws.send(JSON.stringify({
+              traceId,
+              role: 'assistant',
+              type: 'couple_photo',
+              content: cp.finalImageUrl,
+              caption: captions[userPrefs.language] || captions.it,
+              npc_id: npc_id,
+            }));
+
+            await saveMessage({
+              user_id: userId,
+              session_id: sessionId,
+              role: 'assistant',
+              type: 'couple_photo',
+              content: cp.finalImageUrl,
+              npc_id: npc_id,
+            });
+
+            ws.send(JSON.stringify({ traceId, end: true }));
+            return;
+          } catch (cpErr) {
+            console.error('❌ Error generating pending couple photo:', cpErr);
+            // continue to normal flow
+          }
+        }
+
         // Usa Brain Engine per risposta intelligente
         const response = await brainEngine.generateIntelligentResponse(
-          girlfriend,
+          npc,
           {
             id: userId,
             name: userPrefs.name,
@@ -479,7 +593,7 @@ wss.on('connection', (ws, req) => {
         let output = response.output;
         let type = response.type || 'chat';
 
-        console.log('🤖 Reply generated:', { type, output: output?.substring(0, 50) });
+        console.log('🤖 Reply generated:', { type, output: output?.substring(0, 500) });
 
         // Fallback se risposta è vuota o difensiva
         if (!output || output.trim() === '') {
@@ -516,124 +630,272 @@ wss.on('connection', (ws, req) => {
         output = output.replace(/sono un'?intelligenza artificiale[^.]*\./gi, '');
         output = output.replace(/non posso[^.]*\./gi, '');
 
+        // Se manca una foto utente per la couple photo, chiedila al client e segna come pendente
+        const needsUserPhoto = type === 'user_photo_needed' || (response.actions || []).includes('ASK_USER_FOR_PHOTO');
+        if (needsUserPhoto) {
+          pendingCouplePhoto.set(userId, { npcId: npc_id || npc?.id });
+          const lang = userPrefs.language || 'it';
+          const askMsg = askPhoto[lang] || askPhoto.it;
+          ws.send(JSON.stringify({
+            traceId,
+            role: 'system',
+            type: 'request_user_photo',
+            content: askMsg,
+            npc_id: npc_id,
+          }));
+          output = askMsg;
+          type = 'chat';
+        }
+
         // ===== HANDLE MEDIA GENERATION FROM MEDIA INTENT ENGINE =====
-        if (response.mediaRequested && (type === 'photo' || type === 'video' || type === 'audio')) {
-          console.log(`🎬 Generating ${type} as requested by user...`);
+        // Force mediaRequested flag if media intent was detected
+        const mediaRequest = response.mediaRequest;
+        const mediaRequested = !!mediaRequest || (response.mediaRequested || false);
+        const generationType = mediaRequest ? mediaRequest.type : type;
+
+        if (mediaRequested && (generationType === 'photo' || generationType === 'video' || generationType === 'audio' || generationType === 'couple_photo')) {
+          console.log(`🎬 Generating ${generationType} as requested by user...`);
+          const tempId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          // 1. Notify frontend that generation started (show placeholder)
+          console.log('🔔 Sending media_generation_started event', { tempId, npcId: npc_id || npc?.id, mediaType: generationType, traceId });
+          ws.send(JSON.stringify({
+            event: 'media_generation_started',
+            tempId,
+            npcId: npc_id || npc?.id,
+            mediaType: generationType,
+            traceId
+          }));
 
           try {
             let mediaResult;
 
-            if (type === 'photo') {
-              mediaResult = await MediaGenerationService.generatePhoto(girlfriend, userId);
-            } else if (type === 'video') {
-              mediaResult = await MediaGenerationService.generateVideo(girlfriend, userId);
-            } else if (type === 'audio') {
-              mediaResult = await MediaGenerationService.generateAudio(girlfriend, userId);
+            if (generationType === 'photo') {
+              mediaResult = await MediaGenerationService.generatePhoto(
+                npc,
+                response.mediaRequest?.details,   // always use the MediaIntentEngine enriched details
+                resolveNpcAvatar(npc)      // use helper for avatar
+              );
+            } else if (generationType === 'video') {
+              mediaResult = await MediaGenerationService.generateVideo(
+                npc,
+                response.mediaRequest?.details
+              );
+            } else if (generationType === 'audio') {
+              mediaResult = await MediaGenerationService.generateAudio(
+                npc,
+                response.mediaRequest?.details
+              );
+            } else if (generationType === 'couple_photo') {
+              const { generateCouplePhoto } = require('./ai/media/generateCouplePhoto');
+              const storedUserPhoto = uploadedUserPhoto || text.match(/https?:\/\/\S+/)?.[0] || mediaUrl || await getUserPhoto(userId);
+              if (!storedUserPhoto) {
+                pendingCouplePhoto.set(userId, { npcId: npc_id || npc?.id });
+                const lang = userPrefs.language || 'it';
+                const askMsg = askPhoto[lang] || askPhoto.it;
+                ws.send(JSON.stringify({
+                  traceId,
+                  role: 'system',
+                  type: 'request_user_photo',
+                  content: askMsg,
+                  npc_id: npc_id,
+                }));
+                // Fail the pending media since we need user input first
+                ws.send(JSON.stringify({
+                  event: 'media_generation_failed',
+                  tempId,
+                  error: 'User photo required'
+                }));
+                throw new Error('user photo missing for couple photo');
+              }
+
+              const npcImageUrl = await ensureNpcImageForMedia(npc);
+              if (!npcImageUrl) {
+                throw new Error('npc image missing for couple photo');
+              }
+              const cp = await generateCouplePhoto({
+                userImageUrl: storedUserPhoto,
+                npcImageUrl,
+                npcName: npc?.name || 'NPC',
+              });
+              mediaResult = {
+                url: cp.finalImageUrl,
+                caption: captions[userPrefs.language] || captions.it,
+              };
             }
 
-            // Send media message
-            ws.send(JSON.stringify({
-              traceId,
-              role: 'assistant',
-              type,
-              content: mediaResult.url,
-              caption: mediaResult.caption,
-              girlfriend_id: girlfriend_id
-            }));
+            if (!mediaResult || !mediaResult.url) {
+              throw new Error(mediaResult?.error || 'media generation failed');
+            }
 
-            // Save to database
-            await saveMessage({
+            // Save to database first to get the real ID
+            const savedMsg = await saveMessage({
               user_id: userId,
               session_id: sessionId,
               role: 'assistant',
-              type,
+              type: generationType,
               content: mediaResult.url,
-              girlfriend_id: girlfriend_id
+              npc_id: npc_id
             });
+
+            // 2. Notify frontend that generation is complete (replace placeholder)
+            // The frontend will create the message from this event, so we DON'T send a standard message
+            ws.send(JSON.stringify({
+              event: 'media_generation_completed',
+              tempId,
+              mediaType: generationType,
+              finalUrl: mediaResult.url,
+              caption: mediaResult.caption,
+              messageId: savedMsg?.id,
+              npcId: npc_id
+            }));
+
+            // 3. Send caption as a separate text message if present
+            if (mediaResult.caption) {
+              // Wait a bit to make it feel natural
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              const captionMsg = await saveMessage({
+                user_id: userId,
+                session_id: sessionId,
+                role: 'assistant',
+                type: 'text',
+                content: mediaResult.caption,
+                npc_id: npc_id
+              });
+
+              ws.send(JSON.stringify({
+                traceId,
+                role: 'assistant',
+                type: 'text',
+                content: mediaResult.caption,
+                npc_id: npc_id,
+                messageId: captionMsg.id
+              }));
+            }
 
             ws.send(JSON.stringify({ traceId, end: true }));
             return; // Exit early after media generation
           } catch (mediaError) {
-            console.error(`❌ Error generating ${type}:`, mediaError);
-            output = `Ops, ho avuto un problema a generare ${type === 'photo' ? 'la foto' : type === 'video' ? 'il video' : 'l\'audio'}... riprova tra poco 😔`;
+            console.error(`❌ Error generating ${generationType}:`, mediaError);
+
+            // 3. Notify failure
+            ws.send(JSON.stringify({
+              event: 'media_generation_failed',
+              tempId,
+              error: mediaError.message
+            }));
+
+            output = `Ops, ho avuto un problema a generare ${generationType === 'photo' ? 'la foto' : generationType === 'video' ? 'il video' : 'l\'audio'}... riprova tra poco 😔`;
             type = 'chat'; // Fallback to text
           }
         }
 
         // Se è immagine/video/audio, invia diretto (LEGACY PATH)
         if (type === 'image') {
-          ws.send(JSON.stringify({ traceId, status: 'rendering_image' }));
+          const tempId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          ws.send(JSON.stringify({
+            event: 'media_generation_started',
+            tempId,
+            npcId: npc_id,
+            mediaType: 'image',
+            traceId
+          }));
 
-          generateImage(output, girlfriend, userId).then(async (url) => {
-            const imageMessage = JSON.stringify({
-              traceId: traceId,
-              role: 'assistant',
-              type: 'image',
-              content: url.toString(),
-              girlfriend_id: girlfriend_id
-            });
+          // Keep status for backward compatibility if needed, but frontend might duplicate indicators
+          // ws.send(JSON.stringify({ traceId, status: 'rendering_image' }));
 
-            ws.send(imageMessage);
-            ws.send(JSON.stringify({ traceId, end: true }));
-
-            await saveMessage({
+          generateImage(output, npc, userId).then(async (url) => {
+            const savedMsg = await saveMessage({
               user_id: userId,
               session_id: sessionId,
               role: 'assistant',
               type: type,
               content: url.toString(),
-              girlfriend_id: girlfriend_id
+              npc_id: npc_id
             });
+
+            ws.send(JSON.stringify({
+              event: 'media_generation_completed',
+              tempId,
+              mediaType: 'image',
+              finalUrl: url.toString(),
+              messageId: savedMsg.id,
+              npcId: npc_id
+            }));
+
+            ws.send(JSON.stringify({ traceId, end: true }));
+
           }).catch(err => {
             console.error('Errore generazione immagine:', err);
-            ws.send(JSON.stringify({ traceId, role: 'assistant', type: 'image', content: "Ops... qualcosa è andato storto 💔", girlfriend_id: girlfriend_id }));
+            ws.send(JSON.stringify({
+              event: 'media_generation_failed',
+              tempId,
+              error: err.message
+            }));
+
+            ws.send(JSON.stringify({ traceId, role: 'assistant', type: 'image', content: "Ops... qualcosa è andato storto 💔", npc_id: npc_id }));
             ws.send(JSON.stringify({ traceId, end: true }));
           });
           return; // esci subito
         }
 
         if (type === 'video') {
-          ws.send(JSON.stringify({ traceId, status: 'rendering_video' }));
+          const tempId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          ws.send(JSON.stringify({
+            event: 'media_generation_started',
+            tempId,
+            npcId: npc_id,
+            mediaType: 'video',
+            traceId
+          }));
 
           // Get recent chat history for context
           const { data: recentMessages } = await supabase
             .from('messages')
             .select('role, content')
             .eq('user_id', userId)
-            .eq('girlfriend_id', girlfriend_id)
+            .eq('npc_id', npc_id)
             .order('created_at', { ascending: false })
             .limit(10);
 
           const chatHistory = (recentMessages || []).reverse();
 
-          retrievevideo(text, girlfriend, chatHistory, userId, girlfriend_id).then(async (url) => {
-            const videoMessage = JSON.stringify({
-              traceId: traceId,
-              role: 'assistant',
-              type: 'video',
-              content: url,
-              girlfriend_id
-            });
-
+          retrievevideo(text, npc, chatHistory, userId, npc_id).then(async (url) => {
+            let savedMsgId = null;
             try {
-              await saveMessage({
+              const savedMsg = await saveMessage({
                 user_id: userId,
                 session_id: sessionId,
                 role: 'assistant',
                 type: 'video',
                 content: url.toString(),
-                girlfriend_id
+                npc_id
               });
+              savedMsgId = savedMsg.id;
             } catch (e) {
               console.error("❌ Errore salvataggio video:", e);
             }
 
-            ws.send(videoMessage);
+            ws.send(JSON.stringify({
+              event: 'media_generation_completed',
+              tempId,
+              mediaType: 'video',
+              finalUrl: url,
+              messageId: savedMsgId,
+              npcId: npc_id
+            }));
+
             ws.send(JSON.stringify({ traceId, end: true }));
 
           }).catch(err => {
             console.error('Errore generazione video:', err);
-            ws.send(JSON.stringify({ traceId, role: 'assistant', type: 'video', content: "Ops... qualcosa è andato storto 💔", girlfriend_id }));
+            ws.send(JSON.stringify({
+              event: 'media_generation_failed',
+              tempId,
+              error: err.message
+            }));
+            ws.send(JSON.stringify({ traceId, role: 'assistant', type: 'video', content: "Ops... qualcosa è andato storto 💔", npc_id }));
             ws.send(JSON.stringify({ traceId, end: true }));
           });
 
@@ -641,34 +903,49 @@ wss.on('connection', (ws, req) => {
         }
 
         if (type === 'audio') {
-          ws.send(JSON.stringify({ traceId, status: 'recording_audio' }));
+          const tempId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          ws.send(JSON.stringify({
+            event: 'media_generation_started',
+            tempId,
+            npcId: npc_id,
+            mediaType: 'audio',
+            traceId
+          }));
 
           // Get recent chat history for context
           const { data: recentMessages } = await supabase
             .from('messages')
             .select('role, content')
             .eq('user_id', userId)
-            .eq('girlfriend_id', girlfriend_id)
+            .eq('npc_id', npc_id)
             .order('created_at', { ascending: false })
             .limit(10);
 
           const chatHistory = (recentMessages || []).reverse(); // Reverse to get chronological order
 
-          generateAudio(text, girlfriend?.voice_preview_url, chatHistory, userId, girlfriend_id).then(async (url) => {
-            const audioMessage = JSON.stringify({
-              traceId: traceId,
-              role: 'assistant',
-              type: 'audio',
-              content: url,
-              girlfriend_id
-            });
-            await saveMessage({ user_id: userId, session_id: sessionId, role: 'assistant', type, content: url.toString(), girlfriend_id });
-            ws.send(audioMessage);
+          const voiceUrl = npc?.voice_master_url || npc?.voice_preview_url || null;
+          generateAudio(text, voiceUrl, chatHistory, userId, npc_id).then(async (url) => {
+            const savedMsg = await saveMessage({ user_id: userId, session_id: sessionId, role: 'assistant', type, content: url.toString(), npc_id });
+
+            ws.send(JSON.stringify({
+              event: 'media_generation_completed',
+              tempId,
+              mediaType: 'audio',
+              finalUrl: url,
+              messageId: savedMsg.id,
+              npcId: npc_id
+            }));
+
             ws.send(JSON.stringify({ traceId, end: true }));
 
           }).catch(err => {
             console.error('Errore generazione audio:', err);
-            ws.send(JSON.stringify({ traceId, role: 'assistant', type: 'audio', content: "Ops... qualcosa è andato storto 💔", girlfriend_id }));
+            ws.send(JSON.stringify({
+              event: 'media_generation_failed',
+              tempId,
+              error: err.message
+            }));
+            ws.send(JSON.stringify({ traceId, role: 'assistant', type: 'audio', content: "Ops... qualcosa è andato storto 💔", npc_id }));
             ws.send(JSON.stringify({ traceId, end: true }));
           });
         }
@@ -688,7 +965,7 @@ wss.on('connection', (ws, req) => {
                 role: 'assistant',
                 type: 'typing',
                 content: chunks[i],
-                girlfriend_id: girlfriend_id
+                npc_id: npc_id
               });
 
               ws.send(chunkMessage);
@@ -699,7 +976,7 @@ wss.on('connection', (ws, req) => {
                 role: 'assistant',
                 type: 'chat',
                 content: chunks[i],
-                girlfriend_id: girlfriend_id
+                npc_id: npc_id
               });
             }
 
@@ -732,9 +1009,9 @@ wss.on('connection', (ws, req) => {
         });
 
         // ===== UPDATE NPC EMOTIONAL STATE IF MEDIA WAS ANALYZED =====
-        if (mediaEmotionalImpact && girlfriend_id) {
+        if (mediaEmotionalImpact && npc_id) {
           try {
-            const currentStats = girlfriend.stats || {};
+            const currentStats = npc.stats || {};
             const updatedStats = {
               ...currentStats,
               attachment: Math.min(100, (currentStats.attachment || 0) + (mediaEmotionalImpact.attachment || 0)),
@@ -743,14 +1020,14 @@ wss.on('connection', (ws, req) => {
             };
 
             await supabase
-              .from('girlfriends')
+              .from('npcs')
               .update({
                 stats: updatedStats,
                 current_mood: mediaEmotionalImpact.mood,
-                media_memory: girlfriend.media_memory, // Updated by MediaUnderstandingEngine
+                media_memory: npc.media_memory, // Updated by MediaUnderstandingEngine
                 last_interaction_at: new Date().toISOString()
               })
-              .eq('id', girlfriend_id);
+              .eq('id', npc_id);
 
             console.log('✅ NPC emotional state updated:', {
               attachment: `+${mediaEmotionalImpact.attachment}`,
@@ -936,14 +1213,14 @@ async function updateGroupMemory(groupId) {
     // Recupera membri per i nomi
     const { data: members } = await supabase
       .from('group_members')
-      .select('girlfriend_id, girlfriends(id, name)')
+      .select('npc_id, npcs(id, name)')
       .eq('group_id', groupId);
 
     // Costruisci conversazione
     const conversation = messages
       .map(m => {
-        const sender = members?.find(mem => mem.girlfriends.id === m.sender_id);
-        const senderName = sender ? sender.girlfriends.name : 'Utente';
+        const sender = members?.find(mem => mem.npcs.id === m.sender_id);
+        const senderName = sender ? sender.npcs.name : 'Utente';
         return `${senderName}: ${m.content}`;
       })
       .join('\n');

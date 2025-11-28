@@ -5,10 +5,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import '../config.dart';
-import '../models/girlfriend.dart';
-import '../services/girlfriend_service.dart';
+import '../models/npc.dart';
+import '../services/npc_service.dart';
 import '../services/supabase_service.dart';
-import '../widgets/girlfriend_avatar.dart';
+import '../widgets/npc_avatar.dart';
 
 class CreateGroupScreen extends ConsumerStatefulWidget {
   const CreateGroupScreen({super.key});
@@ -18,9 +18,9 @@ class CreateGroupScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
-  final _girlfriendService = GirlfriendService();
+  final _npcService = NpcService();
   final _nameController = TextEditingController();
-  List<Girlfriend> _girlfriends = [];
+  List<Npc> _npcs = [];
   final Set<String> _selectedIds = {};
   bool _loading = true;
   bool _creating = false;
@@ -28,15 +28,15 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   @override
   void initState() {
     super.initState();
-    _loadGirlfriends();
+    _loadNpcs();
   }
 
-  Future<void> _loadGirlfriends() async {
+  Future<void> _loadNpcs() async {
     try {
-      final list = await _girlfriendService.getGirlfriends();
+      final list = await _npcService.getNpcs();
       if (mounted) {
         setState(() {
-          _girlfriends = list;
+          _npcs = list;
           _loading = false;
         });
       }
@@ -164,12 +164,12 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                 ? const Center(
                     child: CircularProgressIndicator(color: Colors.pinkAccent))
                 : ListView.builder(
-                    itemCount: _girlfriends.length,
+                    itemCount: _npcs.length,
                     itemBuilder: (context, index) {
-                      final gf = _girlfriends[index];
+                      final gf = _npcs[index];
                       final isSelected = _selectedIds.contains(gf.id);
                       return ListTile(
-                        leading: GirlfriendAvatar(girlfriend: gf, radius: 24),
+                        leading: NpcAvatar(npc: gf, radius: 24),
                         title: Text(gf.name,
                             style: const TextStyle(color: Colors.white)),
                         subtitle: Text(gf.displayDescription,

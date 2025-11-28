@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math';
-import '../services/girlfriend_service.dart';
+import '../services/npc_service.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 
@@ -9,12 +9,12 @@ class RandomMessageService {
   factory RandomMessageService() => _instance;
   RandomMessageService._internal();
 
-  final _girlfriendService = GirlfriendService();
+  final _npcService = NpcService();
   final _notificationService = NotificationService();
   final _random = Random();
   Timer? _timer;
 
-  // Messaggi random che le girlfriends possono inviare
+  // Messaggi random che le npcs possono inviare
   final List<String> _randomMessages = [
     'Ciao amore, mi manchi 😘',
     'Cosa stai facendo? 🤔',
@@ -54,22 +54,22 @@ class RandomMessageService {
       final userId = SupabaseService.currentUser?.id;
       if (userId == null) return;
 
-      // Get all user's girlfriends
-      final girlfriends = await _girlfriendService.getGirlfriends();
-      if (girlfriends.isEmpty) return;
+      // Get all user's npcs
+      final npcs = await _npcService.getNpcs();
+      if (npcs.isEmpty) return;
 
-      // Pick a random girlfriend
-      final girlfriend = girlfriends[_random.nextInt(girlfriends.length)];
+      // Pick a random npc
+      final npc = npcs[_random.nextInt(npcs.length)];
 
       // Pick a random message
       final message = _randomMessages[_random.nextInt(_randomMessages.length)];
 
       // Send notification
       await _notificationService.showMessageNotification(
-        girlfriendName: girlfriend.name,
+        npcName: npc.name,
         message: message,
-        girlfriendId: girlfriend.id,
-        avatarUrl: girlfriend.avatarUrl,
+        npcId: npc.id,
+        avatarUrl: npc.avatarUrl,
       );
 
       // TODO: Optionally save this message to the database

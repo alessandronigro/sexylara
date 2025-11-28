@@ -3,6 +3,7 @@ const fetch = require("node-fetch");
 const logToFile = require("../utils/log");
 const { processInteraction } = require("../ai/brainEngine"); // Updated to use consolidated brainEngine
 const { supabase } = require("../lib/supabase");
+const env = process.env.NODE_ENV || 'development';
 
 try {
 
@@ -64,7 +65,7 @@ try {
           };
 
           const { error } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .update(updateData)
             .eq('id', girlfriend.id);
 
@@ -122,6 +123,17 @@ IMPORTANT STYLE RULES:
 
     logToFile(JSON.stringify(messages));
 
+    if (env !== 'production') {
+      try {
+        console.log("\n\n==================== VENICE REQUEST (openRouterService) ====================");
+        console.log("MODEL:", process.env.MODEL_VENICE);
+        console.log("---- MESSAGES ----\n", JSON.stringify(messages, null, 2));
+        console.log("==========================================================================\n\n");
+      } catch (logErr) {
+        console.warn("⚠️ Failed to log Venice payload (openRouterService):", logErr);
+      }
+    }
+
     const response = await fetch(process.env.ADDRESS_VENICE, {
       method: "POST",
       headers: {
@@ -137,6 +149,12 @@ IMPORTANT STYLE RULES:
     });
 
     const data = await response.json();
+
+    if (env !== 'production') {
+      console.log("\n\n==================== VENICE RESPONSE (openRouterService) ====================");
+      console.log(JSON.stringify(data, null, 2));
+      console.log("==========================================================================\n\n");
+    }
     logToFile(JSON.stringify(data));
     const content = data?.choices?.[0]?.message?.content || "Ops... la mia lingerie si è incastrata sotto la doccia 😘 torno tra poco...";
 

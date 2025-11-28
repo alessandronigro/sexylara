@@ -11,20 +11,22 @@ import 'package:image_picker/image_picker.dart';
 
 import '../config.dart' as app_config;
 import '../models/message.dart';
-import '../models/girlfriend.dart';
+import '../models/npc.dart';
+import '../models/pending_media.dart';
 import '../services/chat_service.dart';
-import '../services/girlfriend_service.dart';
+import '../services/npc_service.dart';
 import '../services/conversation_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/unified_message_bubble.dart';
-import '../widgets/girlfriend_avatar.dart';
+import '../widgets/npc_avatar.dart';
 import '../widgets/recording_button.dart';
 import '../services/audio_recorder_service.dart';
+import '../widgets/pending_media_bubble.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
-  final String girlfriendId;
+  final String npcId;
 
-  const ChatScreen({super.key, required this.girlfriendId});
+  const ChatScreen({super.key, required this.npcId});
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -32,28 +34,31 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _chatService = ChatService();
-  final _girlfriendService = GirlfriendService();
+  final _npcService = NpcService();
   final _conversationService = ConversationService();
   final _controller = TextEditingController();
   final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final List<Message> _messages = [];
+  final Map<String, PendingMedia> _pendingMedia = {};
   StreamSubscription<Message>? _messageSubscription;
   StreamSubscription<String>? _statusSubscription;
   StreamSubscription<Map<String, String>>? _ackSubscription;
+  StreamSubscription<Map<String, dynamic>>? _mediaEventSubscription;
   bool _sending = false;
   bool _showEmojiPicker = false;
   String _currentStatus = '';
-  Girlfriend? _girlfriend;
+  Npc? _npc;
   Message? _replyingMessage;
   bool _photoUploading = false;
   final _audioRecorder = AudioRecorderService();
   bool _isRecording = false;
+  String? _pendingStatusMessageId;
 
   @override
   void initState() {
     super.initState();
-    _loadGirlfriend();
+    _loadNpc();
     _loadHistory();
     _chatService.connect();
 
@@ -66,7 +71,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _statusSubscription = _chatService.status.listen((status) {
       setState(() {
         _currentStatus = status;
+        _handleStatusMessage(status);
       });
+    });
+    _mediaEventSubscription = _chatService.mediaEvents.listen((data) {
+      _handleMediaEvent(data);
     });
     _ackSubscription = _chatService.messageAcks.listen((ack) {
       if (!mounted) return;
@@ -83,19 +92,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  Future<void> _loadGirlfriend() async {
+  Future<void> _loadNpc() async {
     try {
       final gf =
-          await _girlfriendService.getGirlfriendById(widget.girlfriendId);
+          await _npcService.getNpcById(widget.npcId);
       setState(() {
-        _girlfriend = gf;
+        _npc = gf;
       });
       // Set active chat to prevent notifications for this conversation
-      _chatService.setActiveChat(widget.girlfriendId, gf?.name);
+      _chatService.setActiveChat(widget.npcId, gf?.name);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore caricamento girlfriend: $e')),
+          SnackBar(content: Text('Errore caricamento npc: $e')),
         );
       }
     }
@@ -103,7 +112,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _loadHistory() async {
     try {
-      final history = await _chatService.fetchChatHistory(widget.girlfriendId);
+      final history = await _chatService.fetchChatHistory(widget.npcId);
       if (mounted) {
         setState(() {
           _messages.addAll(history);
@@ -115,6 +124,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  void _handleStatusMessage(String status) {
+    if (status.isEmpty) {
+      if (_pendingStatusMessageId != null) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == _pendingStatusMessageId);
+          _pendingStatusMessageId = null;
+        });
+      }
+      return;
+    }
+
+    String mediaText;
+    if (status == 'rendering_image') {
+      mediaText = '${_npc?.name ?? 'NPC'} ti sta inviando un\'immagine...';
+    } else if (status == 'rendering_video') {
+      mediaText = '${_npc?.name ?? 'NPC'} ti sta inviando un video...';
+    } else if (status == 'rendering_audio') {
+      mediaText = '${_npc?.name ?? 'NPC'} ti sta inviando un audio...';
+    } else {
+      mediaText = '${_npc?.name ?? 'NPC'} sta scrivendo...';
+    }
+
+    final msg = Message(
+      id: 'status-${DateTime.now().millisecondsSinceEpoch}',
+      role: 'assistant',
+      type: MessageType.text,
+      content: mediaText,
+      timestamp: DateTime.now(),
+      status: MessageStatus.sending,
+    );
+
+    setState(() {
+      _messages.removeWhere((m) => m.id.startsWith('status-'));
+      _messages.add(msg);
+      _pendingStatusMessageId = msg.id;
+    });
+    _scrollToBottom();
+  }
+
   @override
   void dispose() {
     // Clear active chat when leaving
@@ -122,6 +170,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _messageSubscription?.cancel();
     _statusSubscription?.cancel();
     _ackSubscription?.cancel();
+    _mediaEventSubscription?.cancel();
     _chatService.dispose();
     _controller.dispose();
     _inputFocusNode.dispose();
@@ -134,10 +183,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          _scrollController.position.minScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
+      }
+    });
+  }
+
+  void _scrollPendingToBottom() {
+    Future.delayed(const Duration(milliseconds: 30), () {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.minScrollExtent);
       }
     });
   }
@@ -238,6 +295,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  void addPendingMedia(PendingMedia media) {
+    setState(() {
+      _pendingMedia[media.tempId] = media;
+    });
+    _scrollPendingToBottom();
+  }
+
+  void completePendingMedia(String tempId) {
+    setState(() {
+      _pendingMedia.remove(tempId);
+    });
+    _scrollPendingToBottom();
+  }
+
+  void failPendingMedia(String tempId) {
+    if (_pendingMedia.containsKey(tempId)) {
+      setState(() {
+        _pendingMedia[tempId]!.status = 'failed';
+      });
+      _scrollPendingToBottom();
+    }
+  }
+
+  void _handleMediaEvent(Map<String, dynamic> data) {
+    switch (data['event']) {
+      case 'media_generation_started':
+        addPendingMedia(
+          PendingMedia(
+            tempId: data['tempId']?.toString() ?? '',
+            npcId: data['npcId']?.toString() ?? widget.npcId,
+            mediaType: data['mediaType']?.toString() ?? 'image',
+          ),
+        );
+        break;
+      case 'media_generation_completed':
+        completePendingMedia(data['tempId']?.toString() ?? '');
+        final mediaType = (data['mediaType'] ?? 'image').toString();
+        final msg = Message(
+          id: data['messageId']?.toString() ??
+              DateTime.now().millisecondsSinceEpoch.toString(),
+          role: 'assistant',
+          type: _messageTypeFromString(mediaType),
+          content: data['finalUrl']?.toString() ?? '',
+          timestamp: DateTime.now(),
+        );
+        setState(() {
+          _messages.add(msg);
+        });
+        _scrollToBottom();
+        break;
+      case 'media_generation_failed':
+        failPendingMedia(data['tempId']?.toString() ?? '');
+        break;
+      default:
+        break;
+    }
+  }
+
+  MessageType _messageTypeFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'image':
+      case 'photo':
+      case 'couple_photo':
+      case 'media':
+        return MessageType.image;
+      case 'video':
+        return MessageType.video;
+      case 'audio':
+        return MessageType.audio;
+      default:
+        return MessageType.text;
+    }
+  }
+
   // ===== AUDIO RECORDING METHODS =====
   
   Future<void> _startRecording() async {
@@ -314,7 +445,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // Upload to backend
       final payload = jsonEncode({
         'userId': userId,
-        'girlfriendId': widget.girlfriendId,
+        'npcId': widget.npcId,
         'filename': 'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
         'audioBase64': audioBase64,
       });
@@ -335,7 +466,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // Send via WebSocket with mediaType and mediaUrl
       _chatService.sendMessage(
         '🎤 Messaggio vocale',
-        girlfriendId: widget.girlfriendId,
+        npcId: widget.npcId,
         mediaType: 'audio',
         mediaUrl: audioUrl,
       );
@@ -397,7 +528,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     _chatService.sendMessage(
       text,
-      girlfriendId: widget.girlfriendId,
+      npcId: widget.npcId,
       replyTo: replyPreview,
     );
     _controller.clear();
@@ -479,7 +610,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final bytes = await file.readAsBytes();
       final payload = jsonEncode({
         'userId': userId,
-        'girlfriendId': widget.girlfriendId,
+        'npcId': widget.npcId,
         'filename': file.name,
         'imageBase64': base64Encode(bytes),
       });
@@ -553,11 +684,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           },
         ),
         title: GestureDetector(
-          onTap: () => context.push('/profile/${widget.girlfriendId}'),
+          onTap: () => context.push('/profile/${widget.npcId}'),
           child: Row(
             children: [
-              GirlfriendAvatar(
-                girlfriend: _girlfriend,
+              NpcAvatar(
+                npc: _npc,
                 radius: 18,
                 showOnlineIndicator: true,
               ),
@@ -566,7 +697,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _girlfriend?.name ?? 'Sexy Lara',
+                    _npc?.name ?? 'Sexy Lara',
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.bold),
                   ),
@@ -585,41 +716,61 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           IconButton(
             icon: const Icon(Icons.photo_library),
             tooltip: 'Gallery',
-            onPressed: () => context.push('/gallery/${widget.girlfriendId}'),
+            onPressed: () => context.push('/gallery/${widget.npcId}'),
           ),
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () => context.go('/create-girlfriend'),
+            onPressed: () => context.go('/create-npc'),
           ),
         ],
       ),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              itemCount: _messages.length + (_currentStatus.isNotEmpty ? 1 : 0),
-              itemBuilder: (_, index) {
-                if (index == _messages.length && _currentStatus.isNotEmpty) {
-                  return const TypingIndicator();
-                }
-                final msg = _messages[index];
-                return GestureDetector(
-                  onLongPress: () => _showMessageOptions(msg),
-                  child: UnifiedMessageBubble(
-                    content: msg.content,
-                    type: msg.type == MessageType.text ? MessageType.text :
-                          msg.type == MessageType.image ? MessageType.image :
-                          msg.type == MessageType.video ? MessageType.video :
-                          msg.type == MessageType.audio ? MessageType.audio : MessageType.text,
-                    isMe: msg.isUser,
-                    timestamp: msg.timestamp,
-                    mediaUrl: msg.type != MessageType.text ? msg.content : null,
-                  ),
-                );
-              },
-            ),
+            child: Builder(builder: (context) {
+              final displayMessages = _messages.reversed.toList();
+              final displayPending = _pendingMedia.values.toList().reversed.toList();
+              final showStatus = _currentStatus.isNotEmpty;
+              final List<dynamic> items = [];
+              if (showStatus) items.add('status');
+              items.addAll(displayPending);
+              items.addAll(displayMessages);
+
+              return ListView.builder(
+                controller: _scrollController,
+                reverse: true,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                itemCount: items.length,
+                itemBuilder: (_, index) {
+                  final item = items[index];
+                  if (item is String && item == 'status') {
+                    return const TypingIndicator();
+                  }
+                  if (item is PendingMedia) {
+                    return PendingMediaBubble(item);
+                  }
+                  final msg = item as Message;
+                  return GestureDetector(
+                    onLongPress: () => _showMessageOptions(msg),
+                    child: UnifiedMessageBubble(
+                      content: msg.content,
+                      type: msg.type == MessageType.text
+                          ? MessageType.text
+                          : msg.type == MessageType.image
+                              ? MessageType.image
+                              : msg.type == MessageType.video
+                                  ? MessageType.video
+                                  : msg.type == MessageType.audio
+                                      ? MessageType.audio
+                                      : MessageType.text,
+                      isMe: msg.isUser,
+                      timestamp: msg.timestamp,
+                      mediaUrl: msg.type != MessageType.text ? msg.content : null,
+                    ),
+                  );
+                },
+              );
+            }),
           ),
           SafeArea(
             top: false,
@@ -655,7 +806,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 Text(
                                   _replyingMessage!.role == 'user'
                                       ? 'Tu'
-                                      : _girlfriend?.name ?? 'Lara',
+                                      : _npc?.name ?? 'Lara',
                                   style: const TextStyle(
                                     color: Colors.pinkAccent,
                                     fontWeight: FontWeight.bold,

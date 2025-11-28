@@ -1,3 +1,5 @@
+require('dotenv').config({ path: __dirname + '/.env' });
+
 module.exports = {
     apps: [
         {
@@ -6,6 +8,7 @@ module.exports = {
             env: {
                 PORT: 4000,
                 NODE_ENV: "production",
+                PM2_LOG_DATE_FORMAT: "YYYY-MM-DD HH:mm:ss",
             },
         },
         {
@@ -14,6 +17,7 @@ module.exports = {
             env: {
                 PORT: 5001,
                 NODE_ENV: "production",
+                PM2_LOG_DATE_FORMAT: "YYYY-MM-DD HH:mm:ss",
             },
         },
     ],

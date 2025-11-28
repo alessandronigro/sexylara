@@ -2,19 +2,18 @@
 
 ## ✅ Cosa è stato fatto
 
-### 1. **Brain Engine Core** (`backend/ai/brainEngine.js`)
+### 1. **Brain Engine Core** (compatibility wrapper `backend/ai/brainEngine.js` → `backend/ai/brain/BrainEngine.js`)
 - ✅ Sistema completo di memoria a lungo termine
 - ✅ Analisi contesto e intenzioni
 - ✅ Prompt dinamici evolutivi
 - ✅ Apprendimento continuo
 - ✅ Anti-ripetizione intelligente
 - ✅ Gestione personalità adattive
+- ✅ Persistenza NPC in Supabase (`npc_profiles.data` JSONB)
 
-### 2. **Database Schema** (`backend/ai/schema.sql`)
-- ✅ 6 tabelle per memorie complete
-- ✅ Indici ottimizzati
-- ✅ Trigger automatici
-- ✅ RLS policies
+### 2. **Database Schema** (`supabase/ddl.sql`)
+- ✅ Tabella `npc_profiles` con JSONB completo del cervello NPC
+- ✅ Indici ottimizzati / trigger aggiornati (vedi file)
 
 ### 3. **Integrazione Server**
 - ✅ Brain Engine integrato in `server-ws.js`

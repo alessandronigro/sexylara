@@ -4,61 +4,68 @@
  */
 
 const { generateImage } = require('../routes/image');
-const { generateVideo } = require('../routes/video');
-const { generateAudio } = require('../routes/audio');
+const generateVideo = require('../routes/video');
+const generateAudio = require('../routes/audio');
 
 class MediaGenerationService {
     /**
      * Genera una foto basata sull'NPC
      * @param {Object} npc - Dati dell'NPC
-     * @param {string} userId - ID utente richiedente
+     * @param {Object} npc - Dati dell'NPC
+     * @param {Object} intentDetails - Dettagli dal MediaIntentEngine (scenePrompt/profilePrompt)
+     * @param {string|null} faceImageUrl - URL del volto di riferimento
      * @returns {Promise<{url: string, caption: string}>}
      */
-    async generatePhoto(npc, userId) {
+    async generatePhoto(npc, intentDetails, faceImageUrl) {
         try {
             console.log(`📸 Generating photo for NPC: ${npc.name}`);
+            if (!intentDetails || !intentDetails.scenePrompt) {
+                throw new Error("missing intent details for photo generation");
+            }
 
-            // Build prompt based on NPC characteristics
-            const prompt = this.buildPhotoPrompt(npc);
+            const finalPrompt = intentDetails.scenePrompt;
 
-            // Call image generation service
-            const result = await generateImage({
-                body: {
-                    prompt,
-                    girlfriendId: npc.id,
-                    userId
-                }
+            const result = await generateImage(finalPrompt, npc, null, 'it', {
+                skipEnhance: true,
+                preservePrompt: true,
+                faceImageUrl
             });
 
+            if (!result || !result.mediaUrl) {
+                throw new Error(result?.error || 'image generation failed');
+            }
+
             return {
-                url: result.imageUrl || result.result,
+                url: result.mediaUrl || result.imageUrl || result.result,
                 caption: this.generatePhotoCaption(npc)
             };
         } catch (error) {
             console.error('❌ Error generating photo:', error);
-            throw error;
+            return {
+                url: null,
+                caption: null,
+                error: error.message || 'image generation failed'
+            };
         }
     }
 
     /**
      * Genera un video basato sull'NPC
      * @param {Object} npc - Dati dell'NPC
-     * @param {string} userId - ID utente richiedente
+     * @param {Object} npc - Dati dell'NPC
+     * @param {Object} intentDetails - Dettagli dal MediaIntentEngine (scenePrompt)
      * @returns {Promise<{url: string, caption: string}>}
      */
-    async generateVideo(npc, userId) {
+    async generateVideo(npc, intentDetails) {
         try {
             console.log(`🎥 Generating video for NPC: ${npc.name}`);
 
-            const prompt = this.buildVideoPrompt(npc);
+            const prompt = intentDetails?.scenePrompt;
+            if (!prompt) {
+                throw new Error('missing intent details for video generation');
+            }
 
-            const result = await generateVideo({
-                body: {
-                    prompt,
-                    girlfriendId: npc.id,
-                    userId
-                }
-            });
+            const result = await generateVideo(prompt, npc, [], null, npc.id);
 
             return {
                 url: result.videoUrl || result.result,
@@ -73,62 +80,40 @@ class MediaGenerationService {
     /**
      * Genera un audio basato sull'NPC
      * @param {Object} npc - Dati dell'NPC
-     * @param {string} userId - ID utente richiedente
-     * @param {string} text - Testo da convertire in audio (opzionale)
+     * @param {Object} npc - Dati dell'NPC
+     * @param {Object} intentDetails - Dettagli dal MediaIntentEngine (scenePrompt)
      * @returns {Promise<{url: string, caption: string}>}
      */
-    async generateAudio(npc, userId, text = null) {
+    async generateAudio(npc, intentDetails) {
         try {
             console.log(`🎤 Generating audio for NPC: ${npc.name}`);
 
-            const audioText = text || this.generateAudioText(npc);
+            const audioText = intentDetails?.scenePrompt;
+            if (!audioText) {
+                throw new Error('missing intent details for audio generation');
+            }
 
-            const result = await generateAudio({
-                body: {
-                    text: audioText,
-                    girlfriendId: npc.id,
-                    userId,
-                    voice: npc.voice_id || 'default'
-                }
-            });
+            const result = await generateAudio(
+                audioText,
+                npc.voice_master_url || null, // prefer cloned master url
+                [],
+                null,
+                npc.id,
+                npc.voice_profile,
+                npc.voice_engine
+            );
+            const finalUrl = typeof result === 'string'
+                ? result
+                : (result?.mediaUrl || result?.audioUrl || result?.result);
 
             return {
-                url: result.audioUrl || result.result,
+                url: finalUrl,
                 caption: "🎤 Ascolta il mio messaggio vocale..."
             };
         } catch (error) {
             console.error('❌ Error generating audio:', error);
             throw error;
         }
-    }
-
-    /**
-     * Costruisce un prompt per la generazione di foto
-     */
-    buildPhotoPrompt(npc) {
-        const traits = npc.core_traits || npc.traits || {};
-        const appearance = npc.appearance || {};
-
-        return `portrait photo of ${npc.name}, ${appearance.age || 25} years old, ${appearance.ethnicity || 'caucasian'}, ${appearance.hair_color || 'brown'} hair, ${appearance.eye_color || 'brown'} eyes, ${traits.style || 'casual'} style, high quality, realistic`;
-    }
-
-    /**
-     * Costruisce un prompt per la generazione di video
-     */
-    buildVideoPrompt(npc) {
-        return `short video of ${npc.name} smiling and waving at camera, realistic, high quality`;
-    }
-
-    /**
-     * Genera un testo per l'audio
-     */
-    generateAudioText(npc) {
-        const greetings = [
-            `Ciao! Sono ${npc.name}. Come stai?`,
-            `Ehi, volevo sentire la tua voce... spero ti piaccia la mia!`,
-            `Ti mando questo vocale perché scrivere non basta... 😘`
-        ];
-        return greetings[Math.floor(Math.random() * greetings.length)];
     }
 
     /**

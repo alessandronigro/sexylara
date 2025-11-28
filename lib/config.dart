@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 class Config {
   static String get _host {
     if (kIsWeb) return 'localhost';
-    if (Platform.isAndroid) return '192.168.1.42'; // Local dev machine IP
+    if (Platform.isAndroid) return '10.0.2.2'; // Android Emulator
     return 'localhost';
   }
 
@@ -12,31 +12,25 @@ class Config {
     const envUrl = String.fromEnvironment('BACKEND_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kReleaseMode) {
-      const prodUrl = String.fromEnvironment('PROD_BACKEND_URL');
-      if (prodUrl.isNotEmpty) return prodUrl;
-      return 'https://myvps.example.com:4001'; // replace with real VPS URL
+      return 'https://sexylara.chat';
     }
-    return 'http://$_host:4001';
+    return 'http://$_host:4000';
   }
 
   static String get aiServiceUrl {
     const envUrl = String.fromEnvironment('AI_SERVICE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kReleaseMode) {
-      const prodUrl = String.fromEnvironment('PROD_AI_URL');
-      if (prodUrl.isNotEmpty) return prodUrl;
-      return 'https://myvps.example.com:4001';
+      return 'https://sexylara.chat';
     }
-    return 'http://$_host:4001';
+    return 'http://$_host:4000'; // Assuming AI service is on same port or proxied
   }
 
   static String get wsBaseUrl {
     const envUrl = String.fromEnvironment('WS_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kReleaseMode) {
-      const prodUrl = String.fromEnvironment('PROD_WS_URL');
-      if (prodUrl.isNotEmpty) return prodUrl;
-      return 'wss://myvps.example.com:5001';
+      return 'wss://sexylara.chat';
     }
     return 'ws://$_host:5001';
   }

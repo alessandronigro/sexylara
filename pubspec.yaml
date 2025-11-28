@@ -26,6 +26,7 @@ dependencies:
   record: ^6.0.0
 
   permission_handler: ^11.0.0
+  timeago: ^3.5.0
 
 dev_dependencies:
   flutter_test:

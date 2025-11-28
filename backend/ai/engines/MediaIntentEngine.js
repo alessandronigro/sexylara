@@ -10,14 +10,19 @@ class MediaIntentEngine {
         this.patterns = {
             photo: [
                 /voglio vederti/i,
+                /vorrei vederti/i,
+                /fammi.*vederti/i,
+                /posso.*vederti/i,
                 /fammi un selfie/i,
                 /mandami una tua immagine/i,
+                /manda.*foto/i,
                 /posso avere una foto/i,
                 /vorrei vedere come sei/i,
                 /mandami un tuo scatto/i,
-                /selfie\?/i,
-                /mandami una foto/i,
-                /fatti vedere/i
+                /selfie/i,
+                /fatti vedere/i,
+                /mostrami/i,
+                /vedo.*te/i
             ],
             video: [
                 /mandami un video/i,

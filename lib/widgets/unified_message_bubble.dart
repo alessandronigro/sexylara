@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
@@ -51,11 +52,11 @@ class UnifiedMessageBubble extends StatelessWidget {
               child: CircleAvatar(
                 radius: 18,
                 backgroundColor: Colors.grey[800],
-                backgroundImage: (avatarUrl!.length > 20)
+                backgroundImage: avatarUrl!.startsWith('http')
                     ? NetworkImage(avatarUrl!)
-                    : NetworkImage('https://ui-avatars.com/api/?name=${Uri.encodeComponent(senderName ?? "AI")}&background=random'),
+                    : null,
                 onBackgroundImageError: (_, __) {},
-              ),
+                ),
             ),
             const SizedBox(width: 8),
           ],
@@ -177,6 +178,7 @@ class _ImageMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLocal = !url.startsWith('http');
     return GestureDetector(
       onTap: () {
         Navigator.of(context).push(
@@ -187,30 +189,36 @@ class _ImageMessage extends StatelessWidget {
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: CachedNetworkImage(
-          imageUrl: url,
-          width: 200,
-          fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            width: 200,
-            height: 200,
-            color: Colors.black12,
-            child: const Center(
-              child: CircularProgressIndicator(
-                color: Colors.pinkAccent,
-                strokeWidth: 2,
+        child: isLocal
+            ? Image.file(
+                File(url),
+                width: 200,
+                fit: BoxFit.cover,
+              )
+            : CachedNetworkImage(
+                imageUrl: url,
+                width: 200,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  width: 200,
+                  height: 200,
+                  color: Colors.black12,
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.pinkAccent,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  width: 200,
+                  height: 150,
+                  color: Colors.grey[800],
+                  child: const Center(
+                    child: Icon(Icons.broken_image, color: Colors.white54),
+                  ),
+                ),
               ),
-            ),
-          ),
-          errorWidget: (context, url, error) => Container(
-            width: 200,
-            height: 150,
-            color: Colors.grey[800],
-            child: const Center(
-              child: Icon(Icons.broken_image, color: Colors.white54),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -232,10 +240,12 @@ class _FullScreenImage extends StatelessWidget {
       ),
       body: Center(
         child: InteractiveViewer(
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            fit: BoxFit.contain,
-          ),
+          child: imageUrl.startsWith('http')
+              ? CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.contain,
+                )
+              : Image.file(File(imageUrl), fit: BoxFit.contain),
         ),
       ),
     );
@@ -259,12 +269,12 @@ class _VideoMessageState extends State<_VideoMessage> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() => _isInitialized = true);
-        }
-      });
+    _controller = widget.url.startsWith('http')
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.url))
+        : VideoPlayerController.file(File(widget.url));
+    _controller.initialize().then((_) {
+      if (mounted) setState(() => _isInitialized = true);
+    });
   }
 
   @override
@@ -359,7 +369,11 @@ class _AudioMessageState extends State<_AudioMessage> {
               if (_isPlaying) {
                 await _audioPlayer.pause();
               } else {
-                await _audioPlayer.play(UrlSource(widget.url));
+                if (widget.url.startsWith('http')) {
+                  await _audioPlayer.play(UrlSource(widget.url));
+                } else {
+                  await _audioPlayer.play(DeviceFileSource(widget.url));
+                }
               }
               setState(() => _isPlaying = !_isPlaying);
             },

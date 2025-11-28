@@ -41,8 +41,8 @@ Deno.serve(async (req) => {
         const { data: members } = await supabase
             .from("group_members")
             .select(`
-        girlfriend_id,
-        girlfriends (
+        npc_id,
+        npcs (
           id,
           name,
           personality_type,
@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
             );
         }
 
-        const memberNames = members.map(m => m.girlfriends.name).join(", ");
+        const memberNames = members.map(m => m.npcs.name).join(", ");
 
         // 3. Recupera gli ultimi 100 messaggi del gruppo
         const { data: messages } = await supabase
@@ -78,8 +78,8 @@ Deno.serve(async (req) => {
         // 4. Costruisci la conversazione con nomi
         const conversation = messages
             .map(m => {
-                const sender = members.find(mem => mem.girlfriends.id === m.sender_id);
-                const senderName = sender ? sender.girlfriends.name : "Utente";
+                const sender = members.find(mem => mem.npcs.id === m.sender_id);
+                const senderName = sender ? sender.npcs.name : "Utente";
                 return `${senderName}: ${m.content}`;
             })
             .join("\n");

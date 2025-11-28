@@ -1,4 +1,5 @@
 const Replicate = require("replicate");
+const { runReplicateWithLogging } = require("../utils/replicateLogger");
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
 exports.generateVideo = async (req, res) => {
@@ -6,13 +7,15 @@ exports.generateVideo = async (req, res) => {
   if (!prompt) return res.status(400).json({ error: "Missing prompt" });
 
   try {
-    const output = await replicate.run("cjwbw/animated-diffusion", {
-      input: {
+    const output = await runReplicateWithLogging(
+      replicate,
+      "cjwbw/animated-diffusion",
+      {
         prompt,
         motion: "subtle",
         num_frames: 24
       }
-    });
+    );
     res.json({ video: output[0] });
   } catch (err) {
     console.error("Video error:", err.message);

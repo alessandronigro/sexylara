@@ -21,12 +21,12 @@ const upload = multer({
 });
 
 /**
- * Upload voice preview for girlfriend
- * POST /api/voice/upload/:girlfriendId
+ * Upload voice preview for npc (legacy param kept)
+ * POST /api/voice/upload/:npcId
  */
-router.post('/upload/:girlfriendId', upload.single('audio'), async (req, res) => {
+router.post('/upload/:npcId', upload.single('audio'), async (req, res) => {
     try {
-        const { girlfriendId } = req.params;
+        const { npcId } = req.params;
 
         if (!req.file) {
             return res.status(400).json({ error: 'No audio file provided' });
@@ -35,19 +35,19 @@ router.post('/upload/:girlfriendId', upload.single('audio'), async (req, res) =>
         // Upload to Supabase Storage
         const result = await storageService.uploadVoiceMaster(
             req.file.buffer,
-            girlfriendId,
+            npcId,
             req.file.originalname
         );
 
-        // Update girlfriend record with voice_preview_url
+        // Update npc record with voice_preview_url
         const { error: updateError } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .update({ voice_preview_url: result.publicUrl })
-            .eq('id', girlfriendId);
+            .eq('id', npcId);
 
         if (updateError) {
-            console.error('Error updating girlfriend:', updateError);
-            return res.status(500).json({ error: 'Failed to update girlfriend' });
+            console.error('Error updating npc:', updateError);
+            return res.status(500).json({ error: 'Failed to update npc' });
         }
 
         res.json({
@@ -90,21 +90,21 @@ router.post('/upload-default', upload.single('audio'), async (req, res) => {
 });
 
 /**
- * Get voice preview URL for girlfriend
- * GET /api/voice/:girlfriendId
+ * Get voice preview URL for npc
+ * GET /api/voice/:npcId
  */
-router.get('/:girlfriendId', async (req, res) => {
+router.get('/:npcId', async (req, res) => {
     try {
-        const { girlfriendId } = req.params;
+        const { npcId } = req.params;
 
         const { data, error } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .select('voice_preview_url')
-            .eq('id', girlfriendId)
+            .eq('id', npcId)
             .single();
 
         if (error) {
-            return res.status(404).json({ error: 'Girlfriend not found' });
+            return res.status(404).json({ error: 'NPC not found' });
         }
 
         res.json({

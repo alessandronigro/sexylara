@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../models/girlfriend.dart';
+import '../models/npc.dart';
 import '../models/message.dart';
-import '../services/girlfriend_service.dart';
+import '../services/npc_service.dart';
 import '../services/supabase_service.dart';
-import '../widgets/girlfriend_avatar.dart';
+import '../widgets/npc_avatar.dart';
 
 class ContactsScreen extends ConsumerStatefulWidget {
   const ContactsScreen({super.key});
@@ -17,25 +17,25 @@ class ContactsScreen extends ConsumerStatefulWidget {
 }
 
 class _ContactsScreenState extends ConsumerState<ContactsScreen> {
-  final _girlfriendService = GirlfriendService();
-  List<Girlfriend> _girlfriends = [];
+  final _npcService = NpcService();
+  List<Npc> _npcs = [];
   bool _loading = true;
   final Map<String, Message> _lastMessages = {};
 
   @override
   void initState() {
     super.initState();
-    _loadGirlfriends();
+    _loadNpcs();
   }
 
-  Future<void> _loadGirlfriends() async {
+  Future<void> _loadNpcs() async {
     setState(() => _loading = true);
     try {
-      final list = await _girlfriendService.getGirlfriends();
+      final list = await _npcService.getNpcs();
       final last = await _fetchLastMessages(list);
       if (!mounted) return;
       setState(() {
-        _girlfriends = list;
+        _npcs = list;
         _lastMessages
           ..clear()
           ..addAll(last);
@@ -60,6 +60,11 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
             style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
+            icon: const Icon(Icons.explore),
+            onPressed: () => context.push('/feed'),
+            tooltip: 'Feed Pubblico',
+          ),
+          IconButton(
             icon: const Icon(Icons.group),
             onPressed: () => context.push('/groups'),
             tooltip: 'Gruppi',
@@ -71,24 +76,24 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () => context.go('/create-girlfriend'),
+            onPressed: () => context.go('/create-npc'),
           ),
         ],
       ),
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: Colors.pinkAccent))
-          : _girlfriends.isEmpty
+          : _npcs.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  onRefresh: _loadGirlfriends,
+                  onRefresh: _loadNpcs,
                   color: Colors.pinkAccent,
                   child: ListView.separated(
-                    itemCount: _girlfriends.length,
+                    itemCount: _npcs.length,
                     separatorBuilder: (context, index) =>
                         Divider(height: 1, color: Colors.grey[900], indent: 72),
                     itemBuilder: (context, index) {
-                      final gf = _girlfriends[index];
+                      final gf = _npcs[index];
                       final lastMessage = _lastMessages[gf.id];
                       final subtitleText = _buildPreviewText(lastMessage);
                       final timeText = lastMessage != null
@@ -96,7 +101,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                           : null;
 
                       return ListTile(
-                        leading: GirlfriendAvatar(girlfriend: gf, radius: 25),
+                        leading: NpcAvatar(npc: gf, radius: 25),
                         title: Text(
                           gf.name,
                           style: const TextStyle(
@@ -128,16 +133,16 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   }
 
   Future<Map<String, Message>> _fetchLastMessages(
-      List<Girlfriend> girlfriends) async {
+      List<Npc> npcs) async {
     final userId = SupabaseService.currentUser?.id;
-    if (userId == null || girlfriends.isEmpty) return {};
+    if (userId == null || npcs.isEmpty) return {};
 
-    final girlfriendIds = girlfriends.map((gf) => gf.id).toList();
+    final npcIds = npcs.map((gf) => gf.id).toList();
     final data = await SupabaseService.client
         .from('messages')
         .select('*')
         .eq('user_id', userId)
-        .in_('girlfriend_id', girlfriendIds)
+        .in_('npc_id', npcIds)
         .order('created_at', ascending: false)
         .limit(200);
 
@@ -145,7 +150,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
     if (data is! List) return result;
 
     for (final raw in data) {
-      final gfId = raw['girlfriend_id']?.toString();
+      final gfId = raw['npc_id']?.toString() ?? raw['npc_id']?.toString();
       if (gfId == null || gfId.isEmpty) continue;
       if (result.containsKey(gfId)) continue;
       result[gfId] = Message.fromJson(
@@ -190,7 +195,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               style: TextStyle(fontSize: 14, color: Colors.grey)),
           const SizedBox(height: 32),
           ElevatedButton.icon(
-            onPressed: () => context.go('/create-girlfriend'),
+            onPressed: () => context.go('/create-npc'),
             icon: const Icon(Icons.add),
             label: const Text('Crea Companion'),
             style: ElevatedButton.styleFrom(

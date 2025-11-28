@@ -61,7 +61,7 @@ class _PrivacySettingsScreenState extends ConsumerState<PrivacySettingsScreen> {
   Future<void> _toggleNpcPrivacy(AiContact npc, bool value) async {
     try {
       final userService = ref.read(userServiceProvider);
-      await userService.updateGirlfriendPrivacy(npc.id, value);
+      await userService.updateNpcPrivacy(npc.id, value);
       
       setState(() {
         final index = _myNpcs.indexWhere((n) => n.id == npc.id);

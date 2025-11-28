@@ -7,6 +7,11 @@ class NpcPost {
   final int likeCount;
   final int commentCount;
   final DateTime createdAt;
+  
+  // Informazioni sull'NPC (dal join)
+  final String? npcName;
+  final String? npcAvatarUrl;
+  final String? npcGender;
 
   NpcPost({
     required this.id,
@@ -17,9 +22,15 @@ class NpcPost {
     required this.likeCount,
     required this.commentCount,
     required this.createdAt,
+    this.npcName,
+    this.npcAvatarUrl,
+    this.npcGender,
   });
 
   factory NpcPost.fromJson(Map<String, dynamic> json) {
+    // Gestisce il join con la tabella npcs
+    final npc = json['npc'] as Map<String, dynamic>?;
+    
     return NpcPost(
       id: json['id'],
       npcId: json['npc_id'],
@@ -29,6 +40,9 @@ class NpcPost {
       likeCount: json['like_count'] ?? 0,
       commentCount: json['comment_count'] ?? 0,
       createdAt: DateTime.parse(json['created_at']),
+      npcName: npc?['name'],
+      npcAvatarUrl: npc?['avatar_url'],
+      npcGender: npc?['gender'],
     );
   }
 }

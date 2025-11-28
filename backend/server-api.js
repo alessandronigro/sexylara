@@ -9,6 +9,7 @@ const { getUserPreferences } = require("./lib/userMemory");
 const generateChatReply = require("./routes/openRouterService");
 const storageService = require("./services/supabase-storage");
 const { analyzeImage } = require("./services/image-analysis");
+const { generateAvatar } = require("./routes/image");
 
 const userRoutes = require('./routes/user');
 const paymentsRoutes = require('./routes/payments');
@@ -18,14 +19,16 @@ const messageRoutes = require('./routes/message');
 const groupRoutes = require('./routes/group');
 const groupInviteRoutes = require('./routes/groupInvite');
 const aiContactsRoutes = require('./routes/aiContacts');
-const girlfriendRoutes = require('./routes/girlfriend');
+const npcRoutes = require('./routes/npc');
 const groupManagementRoutes = require('./routes/groupManagement');
 const userDiscoveryRoutes = require('./routes/userDiscovery'); // Added import
 const audioRoutes = require('./routes/audio');
 const videoRoutes = require('./routes/video');
+const authRoutes = require('./routes/auth');
 const npcShareRoutes = require('./routes/npc_share');
 const npcFeedRoutes = require('./routes/npc_feed');
-const authRoutes = require('./routes/auth');
+const brainCrudRoutes = require('./routes/brainCrud');
+const couplePhotoRoutes = require('./routes/couplePhoto');
 
 const app = express();
 const port = process.env.PORT || 4001;
@@ -47,20 +50,24 @@ app.use('/api', messageRoutes);
 app.use('/api', groupRoutes);
 app.use('/api', groupInviteRoutes);
 app.use('/api', aiContactsRoutes);
-app.use('/api/girlfriends', girlfriendRoutes);
+app.use('/api/girlfriends', npcRoutes); // legacy path
+app.use('/api/npcs', npcRoutes);
 app.use('/api/group', groupManagementRoutes);
 app.use('/api/users', userDiscoveryRoutes); // Added route usage
 app.use('/api/voice', voiceRoutes);
+app.use('/api', brainCrudRoutes);
+app.use('/api', couplePhotoRoutes);
 
 // Avatar Generation Route
 app.post('/api/generate-avatar', async (req, res) => {
-    const { prompt, girlfriendId } = req.body;
-    console.log('🎨 Generate avatar request:', { prompt: prompt?.substring(0, 50), girlfriendId });
+    const { prompt, npcId: bodyNpcId } = req.body;
+    const npcId = bodyNpcId || req.body.girlfriendId; // legacy fallback
+    console.log('🎨 Generate avatar request:', { prompt: prompt?.substring(0, 50), npcId });
 
     if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
     try {
-        const result = await generateAvatar(prompt, girlfriendId);
+        const result = await generateAvatar(prompt, npcId);
         console.log('✅ Avatar generated:', { result: result?.substring(0, 100), isSupabase: result?.startsWith('http') });
 
         // If result starts with http, it's a full URL (Supabase), otherwise it's a filename (local fallback)
@@ -124,8 +131,8 @@ app.get('/api/history/:userId', async (req, res) => {
     }
 });
 
-app.get('/api/chat-history/:userId/:girlfriendId', async (req, res) => {
-    const { userId, girlfriendId } = req.params;
+app.get('/api/chat-history/:userId/:npcId', async (req, res) => {
+    const { userId, npcId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
 
     try {
@@ -133,7 +140,7 @@ app.get('/api/chat-history/:userId/:girlfriendId', async (req, res) => {
             .from('messages')
             .select('*')
             .eq('user_id', userId)
-            .eq('girlfriend_id', girlfriendId)
+            .eq('npc_id', npcId)
             .order('created_at', { ascending: true })
             .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
@@ -150,27 +157,28 @@ app.get('/api/chat-history/:userId/:girlfriendId', async (req, res) => {
 });
 
 app.post('/api/photos/comment', async (req, res) => {
-    const { userId, girlfriendId, filename, imageBase64 } = req.body || {};
+    const { userId, npcId: bodyNpcId, filename, imageBase64 } = req.body || {};
+    const npcId = bodyNpcId || req.body.girlfriendId;
     if (!userId || !imageBase64) {
         return res.status(400).json({ error: 'userId e imageBase64 sono obbligatori' });
     }
 
     try {
         const buffer = Buffer.from(imageBase64, 'base64');
-        const uploadResult = await storageService.uploadChatImage(buffer, userId, girlfriendId);
+        const uploadResult = await storageService.uploadChatImage(buffer, userId, npcId);
         const imageUrl = uploadResult.publicUrl;
-        let girlfriend = null;
+        let npc = null;
 
-        if (girlfriendId) {
+        if (npcId) {
             const { data: gfData, error: gfError } = await supabase
-                .from('girlfriends')
+                .from('npcs')
                 .select('*')
-                .eq('id', girlfriendId)
+                .eq('id', npcId)
                 .single();
             if (gfError) {
-                console.warn('Girlfriend non trovata durante il commento foto', gfError);
+                console.warn('NPC non trovato durante il commento foto', gfError);
             } else {
-                girlfriend = gfData;
+                npc = gfData;
             }
         }
 
@@ -191,7 +199,7 @@ app.post('/api/photos/comment', async (req, res) => {
         
         Commenta questa foto in base alla descrizione fornita. Sii naturale, come se la stessi guardando.`;
 
-        let { type, output } = await generateChatReply(prompt, girlfriend ? girlfriend.tone : userPrefs.tone, girlfriend, userPrefs.memory);
+        let { type, output } = await generateChatReply(prompt, npc ? npc.tone : userPrefs.tone, npc, userPrefs.memory);
         if (!output || output.trim() === '') {
             output = 'Wow, che bella foto! 😍';
         }
@@ -205,7 +213,7 @@ app.post('/api/photos/comment', async (req, res) => {
                 role: 'user',
                 type: 'image',
                 content: imageUrl,
-                girlfriend_id: girlfriendId,
+                npc_id: npcId,
             })
             .select('*')
             .single();
@@ -220,7 +228,7 @@ app.post('/api/photos/comment', async (req, res) => {
                 role: 'assistant',
                 type: 'chat', // Force chat type for photo comments as we don't support media generation here yet
                 content: output,
-                girlfriend_id: girlfriendId,
+                npc_id: npcId,
             })
             .select('*')
             .single();
@@ -236,7 +244,8 @@ app.post('/api/photos/comment', async (req, res) => {
 
 // Audio Upload Route
 app.post('/api/audio/upload', async (req, res) => {
-    const { userId, girlfriendId, filename, audioBase64 } = req.body || {};
+    const { userId, npcId: bodyNpcId, filename, audioBase64 } = req.body || {};
+    const npcId = bodyNpcId || req.body.girlfriendId;
     if (!userId || !audioBase64) {
         return res.status(400).json({ error: 'userId e audioBase64 sono obbligatori' });
     }
@@ -245,7 +254,7 @@ app.post('/api/audio/upload', async (req, res) => {
         const buffer = Buffer.from(audioBase64, 'base64');
 
         // Upload to Supabase Storage
-        const uploadPath = `${userId}/${girlfriendId || 'general'}/${filename || `audio_${Date.now()}.m4a`}`;
+        const uploadPath = `${userId}/${npcId || 'general'}/${filename || `audio_${Date.now()}.m4a`}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
             .from('chat-audio')
             .upload(uploadPath, buffer, {
@@ -276,13 +285,14 @@ app.post('/api/audio/upload', async (req, res) => {
     }
 });
 
-app.get('/api/girlfriend-gallery/:userId/:girlfriendId', async (req, res) => {
+const handleGallery = async (req, res) => {
     const { userId, girlfriendId } = req.params;
+    const npcId = girlfriendId; // legacy param name retained
 
     try {
         const { data, error } = await supabase.storage
             .from('chat-images')
-            .list(`${userId}/${girlfriendId}`, {
+            .list(`${userId}/${npcId}`, {
                 sortBy: { column: 'created_at', order: 'desc' }
             });
 
@@ -295,38 +305,40 @@ app.get('/api/girlfriend-gallery/:userId/:girlfriendId', async (req, res) => {
         const imageUrls = data.map(file => {
             const { data: { publicUrl } } = supabase.storage
                 .from('chat-images')
-                .getPublicUrl(`${userId}/${girlfriendId}/${file.name}`);
+                .getPublicUrl(`${userId}/${npcId}/${file.name}`);
             return publicUrl;
         });
 
         res.json(imageUrls);
     } catch (err) {
-        logToFile("Error in girlfriend-gallery endpoint: " + err);
+        logToFile("Error in npc-gallery endpoint: " + err);
         res.status(500).json({ error: 'Failed to fetch gallery' });
     }
-});
+};
+app.get('/api/girlfriend-gallery/:userId/:girlfriendId', handleGallery); // legacy
+app.get('/api/npc-gallery/:userId/:girlfriendId', handleGallery);
 
 app.delete('/api/girlfriend/:id', async (req, res) => {
     const { id } = req.params;
     const storageService = require('./services/supabase-storage');
 
     try {
-        // Get girlfriend data first
-        const { data: girlfriend, error: fetchError } = await supabase
-            .from('girlfriends')
+        // Get npc data first
+        const { data: npc, error: fetchError } = await supabase
+            .from('npcs')
             .select('user_id')
             .eq('id', id)
             .single();
 
         if (fetchError) {
-            logToFile("Error fetching girlfriend: " + JSON.stringify(fetchError));
-            return res.status(404).json({ error: 'Girlfriend not found' });
+            logToFile("Error fetching npc: " + JSON.stringify(fetchError));
+            return res.status(404).json({ error: 'NPC not found' });
         }
 
         // Delete all files from Supabase Storage
         try {
-            await storageService.deleteGirlfriendFiles(id);
-            logToFile(`Deleted files for girlfriend ${id}`);
+            await storageService.deleteNpcFiles(id);
+            logToFile(`Deleted files for npc ${id}`);
         } catch (storageError) {
             logToFile("Error deleting files: " + storageError);
             // Continue even if file deletion fails
@@ -336,27 +348,27 @@ app.delete('/api/girlfriend/:id', async (req, res) => {
         const { error: messagesError } = await supabase
             .from('messages')
             .delete()
-            .eq('girlfriend_id', id);
+            .eq('npc_id', id);
 
         if (messagesError) {
             logToFile("Error deleting messages: " + JSON.stringify(messagesError));
         }
 
-        // Delete girlfriend from database
+        // Delete npc from database
         const { error: deleteError } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .delete()
             .eq('id', id);
 
         if (deleteError) {
-            logToFile("Error deleting girlfriend: " + JSON.stringify(deleteError));
+            logToFile("Error deleting npc: " + JSON.stringify(deleteError));
             return res.status(500).json({ error: deleteError.message });
         }
 
-        res.json({ success: true, message: 'Girlfriend deleted successfully' });
+        res.json({ success: true, message: 'NPC deleted successfully' });
     } catch (err) {
-        logToFile("Error in delete girlfriend endpoint: " + err);
-        res.status(500).json({ error: 'Failed to delete girlfriend' });
+        logToFile("Error in delete npc endpoint: " + err);
+        res.status(500).json({ error: 'Failed to delete npc' });
     }
 });
 

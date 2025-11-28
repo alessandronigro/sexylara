@@ -37,12 +37,12 @@ Deno.serve(async (req) => {
             );
         }
 
-        // 2. Carica i membri AI del gruppo (girlfriends)
+        // 2. Carica i membri AI del gruppo (npcs)
         const { data: members, error: membersError } = await supabase
             .from("group_members")
             .select(`
-        girlfriend_id,
-        girlfriends (
+        npc_id,
+        npcs (
           id,
           name,
           gender,
@@ -84,8 +84,8 @@ Deno.serve(async (req) => {
             .reverse()
             .map(m => {
                 // Trova il nome del sender
-                const sender = members.find(mem => mem.girlfriends.id === m.sender_id);
-                const senderName = sender ? sender.girlfriends.name : "Utente";
+                const sender = members.find(mem => mem.npcs.id === m.sender_id);
+                const senderName = sender ? sender.npcs.name : "Utente";
                 return `${senderName}: ${m.content}`;
             })
             .join("\n");
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
         const aiReplies = [];
 
         for (const member of members) {
-            const ai = member.girlfriends;
+            const ai = member.npcs;
 
             // Determina il ruolo sociale dell'AI nel gruppo
             const role = _determineRole(ai, groupMemory?.dynamics);
@@ -117,7 +117,7 @@ PERSONALITÀ E CARATTERISTICHE:
 - Aspetto: ${ai.ethnicity || 'europea'}, capelli ${ai.hair_color || 'castani'}, occhi ${ai.eye_color || 'marroni'}
 
 CONTESTO DEL GRUPPO "${group.name}":
-Membri: ${members.map(m => m.girlfriends.name).join(", ")}
+Membri: ${members.map(m => m.npcs.name).join(", ")}
 
 MEMORIA COLLETTIVA DEL GRUPPO:
 ${groupMemory?.summary || "Questo gruppo è appena stato creato. Non ci sono ancora ricordi condivisi."}

@@ -86,9 +86,13 @@ class Message {
   bool get hasSenderName => senderName != null && senderName!.isNotEmpty;
 
   factory Message.fromJson(Map<String, dynamic> json) {
+    final rawType = (json['type'] ?? json['mediaType'] ?? json['media_type'] ?? '').toString().toLowerCase();
     MessageType type;
-    switch (json['type']) {
+    switch (rawType) {
       case 'image':
+      case 'photo':
+      case 'couple_photo':
+      case 'media':
         type = MessageType.image;
         break;
       case 'video':
@@ -123,7 +127,10 @@ class Message {
       id: traceId,
       role: json['role'] ?? 'assistant',
       type: type,
-      content: json['content'] ?? '',
+      content: (json['content'] ??
+              json['mediaUrl'] ??
+              json['media_url'] ??
+              '') as String,
       timestamp: timestamp,
       serverId: serverId,
       replyTo: replyPreview,
@@ -185,6 +192,5 @@ class Message {
     return Message.fromJson(decoded);
   }
 }
-
 
 

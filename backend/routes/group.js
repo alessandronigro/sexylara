@@ -4,9 +4,9 @@ const router = express.Router();
 const { supabase } = require('../lib/supabase');
 const storageService = require('../services/supabase-storage');
 
-// Create a new group with a name and initial members (girlfriend IDs)
+// Create a new group with a name and initial members (npc IDs)
 router.post('/groups', async (req, res) => {
-    const { name, memberIds } = req.body; // memberIds: array of girlfriend IDs
+    const { name, memberIds } = req.body; // memberIds: array of npc IDs
     const userId = req.headers['x-user-id']; // assume user ID passed in header after auth
     if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
@@ -24,7 +24,7 @@ router.post('/groups', async (req, res) => {
         }
         // Insert members
         if (Array.isArray(memberIds) && memberIds.length) {
-            const members = memberIds.map(id => ({ group_id: group.id, girlfriend_id: id }));
+            const members = memberIds.map(id => ({ group_id: group.id, npc_id: id }));
             const { error: memErr } = await supabase.from('group_members').insert(members);
             if (memErr) throw memErr;
         }
@@ -95,7 +95,7 @@ router.delete('/groups/:id', async (req, res) => {
 // Add or remove members from a group
 router.post('/groups/:id/members', async (req, res) => {
     const { id } = req.params;
-    const { add = [], remove = [] } = req.body; // arrays of girlfriend IDs
+    const { add = [], remove = [] } = req.body; // arrays of npc IDs
     const userId = req.headers['x-user-id'];
     try {
         // Verify ownership
@@ -109,7 +109,7 @@ router.post('/groups/:id/members', async (req, res) => {
         if (!data) return res.status(404).json({ error: 'Group not found or access denied' });
 
         if (add.length) {
-            const rows = add.map(gfId => ({ group_id: id, girlfriend_id: gfId }));
+            const rows = add.map(gfId => ({ group_id: id, npc_id: gfId }));
             const { error: addErr } = await supabase.from('group_members').insert(rows);
             if (addErr) throw addErr;
         }
@@ -118,7 +118,7 @@ router.post('/groups/:id/members', async (req, res) => {
                 .from('group_members')
                 .delete()
                 .eq('group_id', id)
-                .in('girlfriend_id', remove);
+                .in('npc_id', remove);
             if (remErr) throw remErr;
         }
         res.json({ success: true });
@@ -131,7 +131,7 @@ router.post('/groups/:id/members', async (req, res) => {
 // Post a new message to a group (text or media URL)
 router.post('/groups/:id/messages', async (req, res) => {
     const { id } = req.params;
-    const { senderId, type = 'text', content } = req.body; // senderId = girlfriend_id
+    const { senderId, type = 'text', content } = req.body; // senderId = npc_id
     const userId = req.headers['x-user-id'];
     try {
         // Verify user belongs to the group (owner) or is a member
@@ -147,9 +147,9 @@ router.post('/groups/:id/messages', async (req, res) => {
         if (!isOwner) {
             const { data: mem, error: memErr } = await supabase
                 .from('group_members')
-                .select('girlfriend_id')
+                .select('npc_id')
                 .eq('group_id', id)
-                .eq('girlfriend_id', senderId)
+                .eq('npc_id', senderId)
                 .maybeSingle();
             if (!memErr && mem) isMember = true;
         }
@@ -190,7 +190,7 @@ router.get('/groups/:id/messages', async (req, res) => {
         if (!allowed) {
             const { data: mem, error: memErr } = await supabase
                 .from('group_members')
-                .select('member_id') // Changed from girlfriend_id to member_id
+                .select('member_id') // Changed from npc_id to member_id
                 .eq('group_id', id)
                 .eq('member_id', userId); // Check if user is a member
 
@@ -226,7 +226,7 @@ router.get('/groups/:id/messages', async (req, res) => {
             .in('id', senderIds);
 
         const { data: ais } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .select('id, name, avatar_url')
             .in('id', senderIds);
 
@@ -267,7 +267,7 @@ router.get('/groups/:id/messages', async (req, res) => {
     }
 });
 
-// Get group details and members (name + girlfriend list)
+// Get group details and members (name + npc list)
 router.get('/groups/:id/members', async (req, res) => {
     const { id } = req.params;
     const userId = req.headers['x-user-id'];
@@ -285,25 +285,25 @@ router.get('/groups/:id/members', async (req, res) => {
         if (!allowed) {
             const { data: mem, error: memErr } = await supabase
                 .from('group_members')
-                .select('girlfriend_id')
+                .select('npc_id')
                 .eq('group_id', id);
             if (!memErr && mem && mem.length) allowed = true;
         }
         if (!allowed) return res.status(403).json({ error: 'Access denied' });
 
-        // Get member girlfriend IDs
+        // Get member npc IDs
         const { data: memberRows, error: memRowsErr } = await supabase
             .from('group_members')
-            .select('girlfriend_id')
+            .select('npc_id')
             .eq('group_id', id);
         if (memRowsErr) throw memRowsErr;
-        const gfIds = memberRows.map(r => r.girlfriend_id);
+        const gfIds = memberRows.map(r => r.npc_id);
 
-        // Fetch girlfriend details (id, name)
+        // Fetch npc details (id, name)
         let members = [];
         if (gfIds.length) {
             const { data: gfData, error: gfErr } = await supabase
-                .from('girlfriends')
+                .from('npcs')
                 .select('id, name')
                 .in('id', gfIds);
             if (gfErr) throw gfErr;

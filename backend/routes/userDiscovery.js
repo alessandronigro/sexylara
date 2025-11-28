@@ -82,9 +82,8 @@ router.put('/settings/privacy', async (req, res) => {
     }
 });
 
-// PUT /api/girlfriends/:id/privacy
-// Update girlfriend privacy settings
-router.put('/girlfriends/:id/privacy', async (req, res) => {
+// PUT /api/girlfriends/:id/privacy (legacy) + /api/npcs/:id/privacy
+const updateNpcPrivacy = async (req, res) => {
     const userId = req.headers['x-user-id'];
     const { id } = req.params;
     const { isPublic } = req.body;
@@ -93,7 +92,7 @@ router.put('/girlfriends/:id/privacy', async (req, res) => {
 
     try {
         const { error } = await supabase
-            .from('girlfriends')
+            .from('npcs')
             .update({ is_public: isPublic })
             .eq('id', id)
             .eq('user_id', userId); // Ensure ownership
@@ -105,6 +104,9 @@ router.put('/girlfriends/:id/privacy', async (req, res) => {
         console.error('Error updating girlfriend privacy:', error);
         res.status(500).json({ error: error.message });
     }
-});
+};
+
+router.put('/girlfriends/:id/privacy', updateNpcPrivacy); // legacy
+router.put('/npcs/:id/privacy', updateNpcPrivacy);
 
 module.exports = router;

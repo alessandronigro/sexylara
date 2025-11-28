@@ -1,6 +1,6 @@
 -- Memoria individuale di ogni AI riguardo l'utente
 CREATE TABLE IF NOT EXISTS ai_user_memory (
-  ai_id uuid REFERENCES girlfriends(id) ON DELETE CASCADE,
+  ai_id uuid REFERENCES npcs(id) ON DELETE CASCADE,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
   memory text,
   relationship_status text DEFAULT 'conoscente',
@@ -18,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_user_memory_last_update ON ai_user_memory(last
 
 -- Commenti sulla tabella
 COMMENT ON TABLE ai_user_memory IS 'Memoria personale di ogni AI riguardo l''utente';
-COMMENT ON COLUMN ai_user_memory.ai_id IS 'ID dell''AI (girlfriend)';
+COMMENT ON COLUMN ai_user_memory.ai_id IS 'ID dell''AI (npc)';
 COMMENT ON COLUMN ai_user_memory.user_id IS 'ID dell''utente';
 COMMENT ON COLUMN ai_user_memory.memory IS 'Sintesi della relazione e ricordi condivisi';
 COMMENT ON COLUMN ai_user_memory.relationship_status IS 'Stato della relazione (conoscente, amico, intimo, etc)';

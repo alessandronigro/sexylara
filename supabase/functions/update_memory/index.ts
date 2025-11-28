@@ -23,14 +23,14 @@ Deno.serve(async (req) => {
             );
         }
 
-        // 1. Recupera informazioni sulla girlfriend
-        const { data: girlfriend } = await supabase
-            .from("girlfriends")
+        // 1. Recupera informazioni sulla npc
+        const { data: npc } = await supabase
+            .from("npcs")
             .select("name, gender, personality_type, tone")
             .eq("id", chat_id)
             .single();
 
-        if (!girlfriend) {
+        if (!npc) {
             return new Response(
                 JSON.stringify({ error: "Chat not found" }),
                 { status: 404, headers: { "Content-Type": "application/json" } }
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
         const { data: messages } = await supabase
             .from("messages")
             .select("content, role, created_at")
-            .eq("girlfriend_id", chat_id)
+            .eq("npc_id", chat_id)
             .order("created_at", { ascending: true })
             .limit(80);
 
@@ -54,11 +54,11 @@ Deno.serve(async (req) => {
 
         // 3. Costruisci la conversazione completa
         const conversation = messages
-            .map(m => `${m.role === 'user' ? 'Utente' : girlfriend.name}: ${m.content}`)
+            .map(m => `${m.role === 'user' ? 'Utente' : npc.name}: ${m.content}`)
             .join("\n");
 
         // 4. Genera il riassunto sintetico usando AI
-        const summaryPrompt = `Sei un assistente che analizza conversazioni tra un utente e ${girlfriend.name}, un'AI con personalità ${girlfriend.personality_type} e stile ${girlfriend.tone}.
+        const summaryPrompt = `Sei un assistente che analizza conversazioni tra un utente e ${npc.name}, un'AI con personalità ${npc.personality_type} e stile ${npc.tone}.
 
 Riassumi in 8-10 righe l'intera relazione e conversazione, evidenziando:
 - Stato emotivo dell'utente e dell'AI

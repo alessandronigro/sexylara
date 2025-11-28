@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 import 'package:google_sign_in/google_sign_in.dart' as google;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:async';
 
 class SupabaseService {
   SupabaseService._();
@@ -7,6 +9,7 @@ class SupabaseService {
 
   static supabase.SupabaseClient get client => supabase.Supabase.instance.client;
   static supabase.User? get currentUser => client.auth.currentUser;
+  static String? getCurrentUserId() => currentUser?.id;
 
   static Future<void> initialize() async {
     const supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: '');
@@ -39,6 +42,50 @@ class SupabaseService {
   }
 
   Future<supabase.AuthResponse> signInWithGoogle() async {
+    // Check if running on web
+    if (kIsWeb) {
+      // Web platform - use Supabase OAuth
+      return await _signInWithGoogleWeb();
+    } else {
+      // Mobile platform - use google_sign_in package
+      return await _signInWithGoogleMobile();
+    }
+  }
+
+  Future<supabase.AuthResponse> _signInWithGoogleWeb() async {
+    // For web, use Supabase's built-in OAuth (opens popup)
+    final bool success = await client.auth.signInWithOAuth(
+      supabase.Provider.google,
+      redirectTo: Uri.base.toString(), // Current URL
+    );
+    
+    if (!success) {
+      throw StateError('OAuth non avviato correttamente');
+    }
+    
+    // Wait for auth state change
+    final completer = Completer<supabase.AuthResponse>();
+    final subscription = client.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session != null && !completer.isCompleted) {
+        completer.complete(supabase.AuthResponse(session: session));
+      }
+    });
+    
+    // Return the first auth response or timeout after 30 seconds
+    return completer.future.timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        subscription.cancel();
+        throw StateError('Timeout durante il login con Google');
+      },
+    ).then((response) {
+      subscription.cancel();
+      return response;
+    });
+  }
+
+  Future<supabase.AuthResponse> _signInWithGoogleMobile() async {
     const webClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
     const androidClientId = String.fromEnvironment('GOOGLE_ANDROID_CLIENT_ID');
 
@@ -63,9 +110,14 @@ class SupabaseService {
     }
 
     final googleUser = await googleSignIn.signIn();
-    final googleAuth = await googleUser?.authentication;
-    final accessToken = googleAuth?.accessToken;
-    final idToken = googleAuth?.idToken;
+    
+    if (googleUser == null) {
+      throw StateError('Login con Google annullato dall\'utente');
+    }
+    
+    final googleAuth = await googleUser.authentication;
+    final accessToken = googleAuth.accessToken;
+    final idToken = googleAuth.idToken;
 
     if (accessToken == null || idToken == null) {
       throw StateError(

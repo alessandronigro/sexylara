@@ -23,7 +23,7 @@ async function uploadDefaultVoice() {
 
         console.log('✅ Voice preview caricato con successo!');
         console.log(`🔗 URL pubblico: ${result.publicUrl}`);
-        console.log('\n📝 Salva questo URL per usarlo come voice preview di default per le nuove girlfriends.');
+        console.log('\n📝 Salva questo URL per usarlo come voice preview di default per le nuove npcs.');
 
         process.exit(0);
     } catch (error) {

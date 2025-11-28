@@ -1,185 +1,182 @@
-/**
- * MediaUnderstandingEngine.js
- * Orchestrates media analysis and NPC reactions
- */
+'use strict';
 
-const VisionEngine = require('./VisionEngine');
-const AudioEngine = require('./AudioEngine');
-const MediaIntentEngine = require('./MediaIntentEngine');
+// MediaUnderstandingEngine (engines layer)
+// ---------------------------------------
+// Questo modulo fornisce una API pulita e focalizzata per analizzare
+// IMMAGINI e AUDIO inviati dall'utente, usando i servizi Replicate
+// definiti in services/replicate-image-analyzer.js e
+// services/replicate-audio-analyzer.js.
+//
+// È "pure": nessuna chiamata a WebSocket o al database.
+// I layer superiori (brainEngine, server-ws) decidono se e come
+// usare i risultati per memoria, stato emotivo, ecc.
 
-class MediaUnderstandingEngine {
+const { analyzeImage } = require('../../services/replicate-image-analyzer');
+const { analyzeAudio } = require('../../services/replicate-audio-analyzer');
+
+const MediaUnderstandingEngine = {
     /**
-     * Processa media ricevuto dall'utente
-     * @param {string} mediaType - 'image' | 'audio' | 'video'
-     * @param {string} mediaUrl - URL o path del media
-     * @param {Object} npc - Dati dell'NPC
-     * @param {string} userId - ID utente
-     * @returns {Promise<Object>} Analisi e reazione
+     * Analizza un media inviato dall'utente (immagine o audio)
+     * e restituisce un oggetto normalizzato:
+     * - analysis: risultato grezzo/normalizzato dal modello
+     * - emotionalImpact: { attachment, intimacy, trust, mood }
+     * - memoryRecord: record descrittivo da poter salvare nella memoria NPC
+     * - reaction: breve testo che l'NPC potrebbe usare come base di risposta
      */
-    async processReceivedMedia(mediaType, mediaUrl, npc, userId) {
+    async processReceivedMedia(type, url, npc = null, userId = null) {
         try {
-            console.log(`📥 Processing received ${mediaType} from user ${userId}`);
+            let analysis = {};
+            let emotionalImpact = null;
+            let memoryRecord = null;
+            let reaction = null;
 
-            let analysis, reaction, memoryRecord;
+            if (type === 'image') {
+                analysis = await analyzeImage(url);
 
-            switch (mediaType) {
-                case 'image':
-                case 'photo':
-                    analysis = await VisionEngine.analyze(mediaUrl);
-                    reaction = VisionEngine.generateReaction(analysis, npc);
-                    memoryRecord = VisionEngine.createMemoryRecord(analysis, userId);
-                    break;
+                emotionalImpact = {
+                    attachment: analysis.containsUserFace ? 3 : 1,
+                    intimacy: analysis.context === 'selfie' ? 3 : 1,
+                    trust: 1,
+                    mood: analysis.emotion || 'neutral',
+                };
 
-                case 'audio':
-                case 'voice':
-                    analysis = await AudioEngine.analyze(mediaUrl);
-                    reaction = AudioEngine.generateReaction(analysis, npc);
-                    memoryRecord = AudioEngine.createMemoryRecord(analysis, userId);
-                    break;
+                reaction = this._buildImageReaction(analysis, npc);
 
-                case 'video':
-                    // For now, treat video as image (analyze first frame)
-                    // TODO: Implement proper video analysis
-                    analysis = await VisionEngine.analyze(mediaUrl);
-                    reaction = `Ho visto il tuo video! ${VisionEngine.generateReaction(analysis, npc)}`;
-                    memoryRecord = {
-                        ...VisionEngine.createMemoryRecord(analysis, userId),
-                        type: 'video_received'
-                    };
-                    break;
+                memoryRecord = {
+                    kind: 'user_image',
+                    url,
+                    summary: analysis.description || 'foto ricevuta',
+                    tags: analysis.tags || [],
+                    emotion: analysis.emotion || null,
+                    created_at: new Date().toISOString(),
+                    user_id: userId || null,
+                };
+            } else if (type === 'audio') {
+                analysis = await analyzeAudio(url);
 
-                default:
-                    throw new Error(`Unsupported media type: ${mediaType}`);
+                emotionalImpact = {
+                    attachment: analysis.userIsTalking ? 2 : 1,
+                    intimacy: (analysis.tones || []).includes('flirt') ? 3 : 1,
+                    trust: 2,
+                    mood: analysis.emotion || 'neutral',
+                };
+
+                reaction = this._buildAudioReaction(analysis, npc);
+
+                memoryRecord = {
+                    kind: 'user_audio',
+                    url,
+                    transcription: analysis.transcription || null,
+                    emotion: analysis.emotion || null,
+                    tones: analysis.tones || [],
+                    created_at: new Date().toISOString(),
+                    user_id: userId || null,
+                };
+            } else {
+                // Tipologia non supportata: ritorno un payload minimale
+                analysis = { type, url };
+                emotionalImpact = null;
+                memoryRecord = {
+                    kind: 'generic_media',
+                    type,
+                    url,
+                    created_at: new Date().toISOString(),
+                    user_id: userId || null,
+                };
+                reaction = null;
             }
-
-            // Calculate emotional impact on NPC
-            const emotionalImpact = this.calculateEmotionalImpact(analysis, npc);
 
             return {
                 analysis,
-                reaction,
-                memoryRecord,
                 emotionalImpact,
-                timestamp: new Date().toISOString()
+                memoryRecord,
+                reaction,
             };
-
-        } catch (error) {
-            console.error('❌ Error processing media:', error);
-
+        } catch (err) {
+            console.error('[MediaUnderstandingEngine] Error processing media:', err);
             return {
-                analysis: { error: error.message },
-                reaction: `Grazie per il ${mediaType}! Mi dispiace, ho avuto un problema ad analizzarlo… ma apprezzo il gesto! ❤️`,
+                analysis: { type, url, error: err?.message },
+                emotionalImpact: null,
                 memoryRecord: {
-                    type: `${mediaType}_received`,
-                    userId,
-                    timestamp: new Date().toISOString(),
-                    error: error.message
+                    kind: 'error',
+                    type,
+                    url,
+                    error: err?.message,
+                    created_at: new Date().toISOString(),
+                    user_id: userId || null,
                 },
-                emotionalImpact: { attachment: +2 }
+                reaction: null,
             };
         }
-    }
+    },
 
     /**
-     * Calcola l'impatto emotivo del media ricevuto sull'NPC
-     * @param {Object} analysis - Analisi del media
-     * @param {Object} npc - Dati dell'NPC
-     * @returns {Object} Modifiche allo stato emotivo
+     * Genera un blocco di testo da appendere al messaggio utente
+     * per dare contesto al BrainEngine.
      */
-    calculateEmotionalImpact(analysis, npc) {
-        const impact = {
-            attachment: 0,
-            intimacy: 0,
-            trust: 0,
-            mood: npc.current_mood || 'neutral'
-        };
+    generateContextPrompt(analysis, type, language = 'it') {
+        const descr = analysis?.description || '';
+        const emo = analysis?.emotion || analysis?.primary_emotion || 'neutral';
 
-        // Base impact: receiving any media increases attachment
-        impact.attachment += 5;
+        const header = language === 'it' ? '[CONTESTO MEDIA]' : '[MEDIA CONTEXT]';
 
-        // Emotion-specific impacts
-        if (analysis.emotion === 'felice') {
-            impact.attachment += 5;
-            impact.mood = 'happy';
-        } else if (analysis.emotion === 'triste') {
-            impact.attachment += 10; // User sharing vulnerability
-            impact.intimacy += 5;
-            impact.trust += 5;
-            impact.mood = 'concerned';
-        } else if (analysis.emotion === 'affettuoso') {
-            impact.attachment += 15;
-            impact.intimacy += 10;
-            impact.mood = 'loving';
-        } else if (analysis.emotion === 'arrabbiato') {
-            impact.attachment += 3;
-            impact.mood = 'worried';
+        if (language === 'it') {
+            return `\n${header}\n` +
+                `L'utente ti ha inviato un ${type}.\n` +
+                `Analisi automatica:\n` +
+                `- Descrizione: ${descr}\n` +
+                `- Emozione percepita: ${emo}\n` +
+                `- Dettagli tecnici: ${JSON.stringify(analysis)}\n\n` +
+                'Rispondi in modo coerente con questo media: fai riferimento al contenuto, ' +
+                'alla situazione e al tono emotivo. Non essere servizievole, non fare la psicologa: ' +
+                'parla come un personaggio vivo, che reagisce spontaneamente al media ricevuto.\n';
         }
 
-        // Media type impacts
-        if (analysis.type === 'audio_received') {
-            impact.intimacy += 5; // Voice is more intimate
-        }
-
-        if (analysis.persons && analysis.persons > 1) {
-            impact.attachment -= 2; // Slight jealousy if others are present
-        }
-
-        return impact;
-    }
+        // EN default
+        return `\n${header}\n` +
+            `The user sent you a ${type}.\n` +
+            `Automatic analysis:\n` +
+            `- Description: ${descr}\n` +
+            `- Detected emotion: ${emo}\n` +
+            `- Technical details: ${JSON.stringify(analysis)}\n\n` +
+            'Reply in a way that matches this media: refer to its content, the situation, and the emotional tone. ' +
+            'Do not sound like a therapist or an assistant: speak as a vivid character reacting naturally to what they see/hear.\n';
+    },
 
     /**
-     * Aggiorna la memoria dell'NPC con il media ricevuto
-     * @param {Object} npc - Dati dell'NPC
-     * @param {Object} memoryRecord - Record di memoria
-     * @returns {Object} Memoria aggiornata
+     * Hook per futura integrazione con una vera memoria persitente.
+     * Rimane NO-OP per compatibilità e per evitare dipendenze dal DB.
      */
-    updateNpcMemory(npc, memoryRecord) {
-        if (!npc.media_memory) {
-            npc.media_memory = [];
+    async updateNpcMemory(_npc, _record) {
+        return;
+    },
+
+    _buildImageReaction(analysis, npc) {
+        const name = npc?.name || 'Lei';
+
+        if (analysis.containsUserFace && analysis.smile) {
+            return `${name} nota il tuo sorriso e si scioglie un po'.`;
         }
-
-        npc.media_memory.push(memoryRecord);
-
-        // Keep only last 50 media memories
-        if (npc.media_memory.length > 50) {
-            npc.media_memory = npc.media_memory.slice(-50);
+        if (analysis.context === 'selfie') {
+            return `${name} guarda il tuo selfie e ti immagina ancora più vicino.`;
         }
-
-        return npc.media_memory;
-    }
-
-    /**
-     * Genera un prompt arricchito per l'AI che include il contesto del media
-     * @param {Object} analysis - Analisi del media
-     * @param {string} mediaType - Tipo di media
-     * @returns {string} Prompt aggiuntivo
-     */
-    generateContextPrompt(analysis, mediaType) {
-        let prompt = `\n\n### MEDIA APPENA RICEVUTO DALL'UTENTE\n`;
-
-        if (mediaType === 'image' || mediaType === 'photo') {
-            prompt += `L'utente ti ha appena inviato una foto.\n`;
-            prompt += `Analisi immagine:\n`;
-            prompt += `- Emozione rilevata: ${analysis.emotion}\n`;
-            prompt += `- Contesto: ${analysis.context}\n`;
-            prompt += `- Stile: ${analysis.style}\n`;
-            prompt += `- Atmosfera: ${analysis.atmosphere}\n`;
-            if (analysis.persons > 1) {
-                prompt += `- ATTENZIONE: Ci sono ${analysis.persons} persone nella foto\n`;
-            }
-        } else if (mediaType === 'audio') {
-            prompt += `L'utente ti ha appena inviato un messaggio vocale.\n`;
-            prompt += `Trascrizione: "${analysis.text}"\n`;
-            prompt += `- Emozione rilevata: ${analysis.emotion}\n`;
-            prompt += `- Tono: ${analysis.tone}\n`;
-            prompt += `- Intensità: ${analysis.intensity}\n`;
+        if (analysis.description) {
+            return `${name} osserva la tua foto: "${analysis.description}".`;
         }
+        return `${name} osserva la tua foto con attenzione e curiosità.`;
+    },
 
-        prompt += `\nDevi reagire in modo naturale, empatico e coerente con la tua personalità.\n`;
-        prompt += `Mostra che hai davvero analizzato e compreso il contenuto.\n`;
+    _buildAudioReaction(analysis, npc) {
+        const name = npc?.name || 'Lei';
 
-        return prompt;
-    }
-}
+        if (analysis.transcription && (analysis.tones || []).includes('flirt')) {
+            return `${name} ascolta la tua voce e sente chiaramente quel tono malizioso...`;
+        }
+        if (analysis.transcription) {
+            return `${name} ti ascolta e rimane colpita da ciò che dici.`;
+        }
+        return `${name} ascolta il tuo audio e prova a immaginare il tuo stato d'animo.`;
+    },
+};
 
-module.exports = new MediaUnderstandingEngine();
+module.exports = MediaUnderstandingEngine;

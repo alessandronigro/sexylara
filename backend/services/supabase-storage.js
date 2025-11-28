@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 class SupabaseStorageService {
     constructor() {
         this.buckets = {
-            avatars: 'avatars',           // Foto profilo delle girlfriends
+            avatars: 'avatars',           // Foto profilo degli npc
             chatImages: 'chat-images',    // Immagini generate nelle chat
             chatVideos: 'chat-videos',    // Video generati nelle chat
             chatAudio: 'chat-audio',      // Audio generati nelle chat
@@ -119,8 +119,8 @@ class SupabaseStorageService {
     /**
      * Upload video chat
      */
-    async uploadChatVideo(buffer, userId, girlfriendId) {
-        const filename = `${userId}/${girlfriendId}/${uuidv4()}.mp4`;
+    async uploadChatVideo(buffer, userId, npcId) {
+        const filename = `${userId}/${npcId}/${uuidv4()}.mp4`;
         return this.uploadFile(this.buckets.chatVideos, buffer, {
             filename,
             contentType: 'video/mp4'
@@ -130,8 +130,8 @@ class SupabaseStorageService {
     /**
      * Upload audio chat
      */
-    async uploadChatAudio(buffer, userId, girlfriendId) {
-        const filename = `${userId}/${girlfriendId}/${uuidv4()}.mp3`;
+    async uploadChatAudio(buffer, userId, npcId) {
+        const filename = `${userId}/${npcId}/${uuidv4()}.mp3`;
         return this.uploadFile(this.buckets.chatAudio, buffer, {
             filename,
             contentType: 'audio/mpeg'
@@ -141,9 +141,9 @@ class SupabaseStorageService {
     /**
      * Upload voice master per clonazione
      */
-    async uploadVoiceMaster(buffer, girlfriendId, originalFilename) {
+    async uploadVoiceMaster(buffer, npcId, originalFilename) {
         const ext = originalFilename.split('.').pop();
-        const filename = `girlfriend_${girlfriendId}_master.${ext}`;
+        const filename = `npc_${npcId}_master.${ext}`;
         return this.uploadFile(this.buckets.voiceMasters, buffer, {
             filename,
             contentType: this._getAudioMimeType(ext)
@@ -182,9 +182,9 @@ class SupabaseStorageService {
     }
 
     /**
-     * Elimina tutti i file di una girlfriend
+     * Elimina tutti i file di un npc
      */
-    async deleteGirlfriendFiles(girlfriendId) {
+    async deleteNpcFiles(girlfriendId) {
         const results = {
             avatar: false,
             voiceMaster: false,
@@ -195,7 +195,7 @@ class SupabaseStorageService {
             // Elimina avatar
             const { data: avatarFiles } = await supabase.storage
                 .from(this.buckets.avatars)
-                .list('', { search: `girlfriend_${girlfriendId}` });
+                .list('', { search: `npc_${girlfriendId}` });
 
             if (avatarFiles && avatarFiles.length > 0) {
                 await this.deleteFile(this.buckets.avatars, avatarFiles[0].name);
@@ -205,7 +205,7 @@ class SupabaseStorageService {
             // Elimina voice master
             const { data: voiceFiles } = await supabase.storage
                 .from(this.buckets.voiceMasters)
-                .list('', { search: `girlfriend_${girlfriendId}` });
+                .list('', { search: `npc_${girlfriendId}` });
 
             if (voiceFiles && voiceFiles.length > 0) {
                 await this.deleteFile(this.buckets.voiceMasters, voiceFiles[0].name);
@@ -217,7 +217,7 @@ class SupabaseStorageService {
 
             return results;
         } catch (error) {
-            console.error('Errore eliminazione file girlfriend:', error);
+            console.error('Errore eliminazione file npc:', error);
             return results;
         }
     }

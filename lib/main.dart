@@ -6,10 +6,10 @@ import 'providers/session_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/contacts_screen.dart';
-import 'screens/create_girlfriend_screen.dart';
+import 'screens/create_npc_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/girlfriend_gallery_screen.dart';
-import 'screens/girlfriend_profile_screen.dart';
+import 'screens/npc_gallery_screen.dart';
+import 'screens/npc_profile_screen.dart';
 import 'screens/user_profile_screen.dart';
 import 'screens/preference_screen.dart';
 import 'screens/subscription_screen.dart';
@@ -21,6 +21,8 @@ import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/random_message_service.dart';
 import 'screens/splash_screen.dart';
+import 'screens/public_feed_screen.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,27 +68,27 @@ class ThrilMeApp extends ConsumerWidget {
             builder: (context, state) => const RegisterScreen()),
         GoRoute(path: '/', builder: (context, state) => const ContactsScreen()),
         GoRoute(
-            path: '/create-girlfriend',
-            builder: (context, state) => const CreateGirlfriendScreen()),
+            path: '/create-npc',
+            builder: (context, state) => const CreateNpcScreen()),
         GoRoute(
-          path: '/chat/:girlfriendId',
+          path: '/chat/:npcId',
           builder: (context, state) {
-            final girlfriendId = state.pathParameters['girlfriendId']!;
-            return ChatScreen(girlfriendId: girlfriendId);
+            final npcId = state.pathParameters['npcId']!;
+            return ChatScreen(npcId: npcId);
           },
         ),
         GoRoute(
-          path: '/gallery/:girlfriendId',
+          path: '/gallery/:npcId',
           builder: (context, state) {
-            final girlfriendId = state.pathParameters['girlfriendId']!;
-            return GirlfriendGalleryScreen(girlfriendId: girlfriendId);
+            final npcId = state.pathParameters['npcId']!;
+            return NpcGalleryScreen(npcId: npcId);
           },
         ),
         GoRoute(
-          path: '/profile/:girlfriendId',
+          path: '/profile/:npcId',
           builder: (context, state) {
-            final girlfriendId = state.pathParameters['girlfriendId']!;
-            return GirlfriendProfileScreen(girlfriendId: girlfriendId);
+            final npcId = state.pathParameters['npcId']!;
+            return NpcProfileScreen(npcId: npcId);
           },
         ),
         GoRoute(
@@ -116,6 +118,9 @@ class ThrilMeApp extends ConsumerWidget {
             return GroupChatScreen(groupId: groupId);
           },
         ),
+        GoRoute(
+            path: '/feed',
+            builder: (context, state) => const PublicFeedScreen()),
       ],
     );
 

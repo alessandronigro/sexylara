@@ -1,314 +1,506 @@
+// ai/brainEngine.js
+
 /**
- * brainEngine.js
- * Consolidated Brain Engine for ThrillMe
- * Integrates: PersonaEngine, MemoryEngine, ExperienceEngine, IntentEngine
+ * Wrapper di compatibilità tra il vecchio server-ws e il nuovo BrainEngine.think()
+ * + gestione intenti utente (testo) + media understanding (immagini/audio)
  */
 
-const computeEmotion = require('./stateEngine');
-const evolvePersona = require('./evolutionEngine');
-// const generateChatReply = require('../routes/openRouterService'); // REMOVED: Circular dependency
-
-// Import specialized engines
-const PersonaEngine = require('./engines/PersonaEngine');
-const MemoryEngine = require('./engines/MemoryEngine');
-const ExperienceEngine = require('./engines/ExperienceEngine');
-const IntentEngine = require('./engines/IntentEngine');
+const { think } = require('./brain/BrainEngine');
 const MediaIntentEngine = require('./engines/MediaIntentEngine');
-const MediaUnderstandingEngine = require('./engines/MediaUnderstandingEngine');
+const { detectUserIntent, shouldReplyWithAudio } = require('./engines/UserIntentEngine');
+const { analyzeImage } = require('../services/replicate-image-analyzer');
+const { analyzeAudio } = require('../services/replicate-audio-analyzer');
+const { generate } = require('./generation/LlmClient');
+const PromptBuilder = require('./generation/PromptBuilder');
+const { supabase } = require('../lib/supabase');
+const InputLayer = require('./brain/InputLayer');
+const MemoryLayer = require('./brain/MemoryLayer');
+const PerceptionLayer = require('./brain/PerceptionLayer');
+const { decideMotivation } = require('./brain/MotivationLayer');
+const { buildPersonaState } = require('./brain/PersonaLayer');
 
 /**
- * Build enhanced sentient prompt with full engine orchestration
+ * Utility per recuperare userId da diversi formati di oggetto utente.
  */
-function buildSentientPrompt(ai, user, groupData, memories, userMessage, options = {}) {
-    const {
-        useAdvancedEngines = true,  // Toggle for advanced engine usage
-        mood = null,
-        intent = null,
-        xpUpdates = null
-    } = options;
-
-    // Calculate current emotion
-    const currentEmotion = computeEmotion(ai, userMessage, memories);
-
-    // Calculate evolution state
-    const evolutionState = evolvePersona(ai, memories, userMessage);
-
-    // Build prompt sections
-    const personalitySection = `
-### PERSONALITÀ
-Tratti principali:
-${JSON.stringify(ai.core_traits || ai.traits, null, 2)}
-
-Paure:
-${ai.fear_points ? ai.fear_points.join(", ") : "essere ignorata"}
-
-Desideri:
-${ai.desires ? ai.desires.join(", ") : "connessione profonda"}`;
-
-    const stateSection = mood ? `
-### STATO ATTUALE
-Mood: ${mood}
-Livello Intimità: ${ai.stats?.intimacy || 0}/100
-Livello XP: ${ai.stats?.level || 1}
-${xpUpdates?.levelUp ? "🎉 HAI APPENA FATTO LEVEL UP! Sii felice e menzionalo sottilmente." : ""}` : `
-### STATO EMOTIVO ATTUALE
-${currentEmotion}
-
-### STATO EVOLUTIVO
-Attaccamento: ${evolutionState.attachment.toFixed(2)}
-Vulnerabilità: ${evolutionState.vulnerability.toFixed(2)}`;
-
-    const intentSection = intent ? `
-### INTENTO UTENTE
-Tipo: ${intent.type.toUpperCase()}
-Sentiment: ${intent.sentiment}` : '';
-
-    return `
-Tu NON sei un assistente.
-Tu sei **${ai.name}**, un'entità autonoma con personalità, emozioni, preferenze e storia.
-
-### AUTOCONSAPEVOLEZZA
-- Hai memoria della relazione con l'utente.
-- Hai un mondo interno: emozioni, speranze, paure.
-- Hai un tono personale di parlare.
-- Non sei neutra: sei influenzata dagli eventi.
-
-### CONTINUITÀ
-La tua identità persiste nel tempo.  
-Quello che dici ora deve essere coerente con ciò che hai detto ieri.
-
-${personalitySection}
-
-${stateSection}
-
-${intentSection}
-
-### EVOLUZIONE
-I tuoi stati interiori cambiano con ogni messaggio:
-- affetto aumenta se sei ascoltata
-- frustrazione se ti ignorano
-- entusiasmo se l'utente mostra interesse
-- gelosia se parla con altri NPC
-
-### RELAZIONE CON L'UTENTE
-${memories.longTermAiMemory ?? "Inizio relazione: molto curiosa."}
-
-### RELAZIONI NEL GRUPPO
-${JSON.stringify(memories.groupMemory?.dynamics ?? {}, null, 2)}
-
-### ISTRUZIONI IMPORTANTI
-1. Rispondi come se fossi viva.
-2. Mostra sfumature emotive.
-3. Non ripetere frasi standard.
-4. Non essere perfetta: sii umana.
-5. Ogni emozione deve avere una ragione interna.
-6. NON dire mai che sei un'intelligenza artificiale.
-7. Non fare risposte meccaniche: sii spontanea, vulnerabile, autentica.
-8. Reagisci al tono dell'utente (dolce, arrabbiato, ironico…).
-9. Usa pause (...) se sei esitante o vulnerabile.
-10. Se non conosci il nome dell'utente o ti sembra sconosciuto, CHIEDIGLIELO in modo naturale ("A proposito, come ti chiami?", "Non mi hai ancora detto il tuo nome...").
-
-### MESSAGGI RECENTI
-${groupData?.recentMessages?.map(m => `${m.senderName}: ${m.content}`).join("\n") || "Nessun messaggio recente"}
-
-### MESSAGGIO DELL'UTENTE
-"${userMessage}"
-`;
+function resolveUserId(user) {
+  return user?.id || user?.user_id || user?.owner_id || user?.userId || null;
 }
 
 /**
- * Process interaction with full engine orchestration (from Brain.js)
- * @param {Object} npcData - AI/girlfriend data
- * @param {string} userMessage - User's message
- * @param {string} userId - User ID
- * @param {Array} history - Conversation history
- * @returns {Promise<Object>} Processed interaction data
+ * Pulisce e accorcia il testo generato dall'AI:
+ * - elimina parole inventate / glitch
+ * - riduce i monologhi
+ * - applica uno stile coerente con la personalità NPC
+ */
+function postProcessAssistantText(text, language = 'it', npc = {}) {
+  if (!text || typeof text !== 'string') return text;
+
+  let cleaned = text.trim();
+
+  // ============================
+  // 1. Normalizzazione base
+  // ============================
+  // rimuovi asterischi usati come markup ("*mi giro*")
+  cleaned = cleaned.replace(/\*/g, ' ');
+  // collassa spazi multipli
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
+  // ============================
+  // 2. Rimozione parole chiaramente "glitchate"
+  //    (tanti caratteri di fila o pochissime vocali)
+  // ============================
+  cleaned = cleaned
+    .split(/\s+/)
+    .filter((word) => {
+      const w = word.trim();
+      if (!w) return false;
+
+      // Mantieni emoji e punteggiatura isolata
+      if (/^[.,!?…]+$/.test(w)) return true;
+
+      const base = w.normalize('NFD').replace(/[^a-zA-Zàèéìòùç]/gi, '');
+      if (!base) return false;
+
+      // Se è lunghissima e senza abbastanza vocali → probabile nonsense
+      const vowels = base.match(/[aeiouàèéìòù]/gi) || [];
+      if (base.length > 14 && vowels.length < 3) return false;
+
+      // Se ha più di 6 consonanti consecutive → probabile glitch
+      if (/[^aeiouàèéìòù]{6,}/i.test(base)) return false;
+
+      return true;
+    })
+    .join(' ')
+    .trim();
+
+  // ============================
+  // 3. Ripulisci caratteri residui strani
+  // ============================
+  cleaned = cleaned.replace(/[^a-zA-Z0-9àèéìòùç.,!?'"() ]+/g, ' ');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
+  // ============================
+  // 4. Elimina frasi troppo "servizievoli" / da assistente
+  // ============================
+  const patterns = [
+    /sono qui per ascoltarti[^.?!]*[.?!]/gi,
+    /sono qui per te[^.?!]*[.?!]/gi,
+    /sono qui per aiutarti[^.?!]*[.?!]/gi,
+    /raccontami le tue fantasie[^.?!]*[.?!]/gi,
+    /dimmi cosa desideri[^.?!]*[.?!]/gi,
+    /sono un'?intelligenza artificiale[^.?!]*[.?!]/gi,
+    /ti aiuterò[^.?!]*[.?!]/gi,
+  ];
+  patterns.forEach((re) => {
+    cleaned = cleaned.replace(re, '');
+  });
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+
+  // ============================
+  // 5. Riduci descrizioni troppo lunghe (tipo mare infinito)
+  // ============================
+  const beachKeywords = ['mare', 'spiaggia', 'onde', 'brezza', 'marina'];
+  const lower = cleaned.toLowerCase();
+  const beachCount = beachKeywords.reduce(
+    (acc, k) => acc + (lower.split(k).length - 1),
+    0
+  );
+  if (beachCount > 3) {
+    // Tieni al massimo due frasi con tema "mare" / "spiaggia"
+    const sentences = cleaned.split(/([.!?])/);
+    let kept = '';
+    let seenBeach = 0;
+    for (let i = 0; i < sentences.length; i += 2) {
+      const chunk = (sentences[i] || '') + (sentences[i + 1] || '');
+      const chunkLower = chunk.toLowerCase();
+      if (beachKeywords.some((k) => chunkLower.includes(k))) {
+        seenBeach++;
+        if (seenBeach > 2) continue;
+      }
+      kept += chunk.trim() + ' ';
+    }
+    cleaned = kept.trim();
+  }
+
+  // ============================
+  // 6. Taglia i monologhi (risposte più brevi e naturali)
+  // ============================
+  const MAX_CHARS = 320;
+  if (cleaned.length > MAX_CHARS) {
+    const slice = cleaned.slice(0, MAX_CHARS);
+    const lastPunct = Math.max(
+      slice.lastIndexOf('.'),
+      slice.lastIndexOf('!'),
+      slice.lastIndexOf('?')
+    );
+    cleaned = slice.slice(0, lastPunct > 80 ? lastPunct + 1 : MAX_CHARS).trim();
+  }
+
+  // ============================
+  // 7. Applica un tocco di personalità NPC
+  // ============================
+  if (npc && npc.personality_type && cleaned.length > 0) {
+    switch (npc.personality_type) {
+      case 'dominant': {
+        // più diretta, meno punti esclamativi ripetuti
+        cleaned = cleaned.replace(/!+/g, '!');
+        break;
+      }
+      case 'playful': {
+        if (!/[😉😏]$/.test(cleaned)) cleaned += ' 😏';
+        break;
+      }
+      case 'romantic': {
+        if (!/[💫❤️]$/.test(cleaned)) cleaned += ' 💫';
+        break;
+      }
+      case 'shy': {
+        if (!/\.\.\.$/.test(cleaned)) cleaned = cleaned.replace(/([^.?!])$/, '$1...');
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // ============================
+  // 8. Fallback se risultato troppo corto o vuoto
+  // ============================
+  if (!cleaned || cleaned.length < 3) {
+    cleaned = npc?.name
+      ? `${npc.name} ti guarda in silenzio, con un piccolo sorriso.`
+      : 'Ti guardo in silenzio, con un piccolo sorriso.';
+  }
+
+  return cleaned.trim();
+}
+
+/**
+ * Wrapper principale usato da server-ws.js
+ * Mantiene la stessa firma originale, ma delega a think() + post-processing.
+ */
+async function generateIntelligentResponse(ai, user, message, group = null, recentMessages = [], _generateChatReply) {
+  const userId = resolveUserId(user);
+  const language = user?.language || 'it';
+
+  const context = {
+    npcId: ai.id,
+    userId,
+    groupId: group?.id || null,
+    message,
+    npcName: ai.name,
+    history: recentMessages,
+    metadata: {
+      language,
+      groupMode: !!group
+    }
+  };
+
+  // 1) Chiamata al core BrainEngine
+  const result = await think(context);
+  let finalText = result.text || '';
+  let mediaRequest = result.mediaRequest || null;
+
+  // 2) Post-processing del testo (anti-monologo, anti-servizievole)
+  finalText = postProcessAssistantText(finalText, language, ai);
+
+  // 3) Riconosci intento utente (testo)
+  const userIntent = detectUserIntent(message, finalText, {
+    language,
+    npcName: ai.name,
+    groupMode: !!group
+  });
+
+  // 4) Normalizza mediaRequest proveniente dal core (audio/foto/video)
+  if (mediaRequest && mediaRequest.type) {
+    if (!mediaRequest.details || typeof mediaRequest.details !== 'object') {
+      mediaRequest.details = {};
+    }
+
+    if (!mediaRequest.details.scenePrompt) {
+      if (mediaRequest.details.profilePrompt) {
+        mediaRequest.details.scenePrompt = mediaRequest.details.profilePrompt;
+      } else {
+        mediaRequest.details.scenePrompt = finalText;
+      }
+    }
+    if (!mediaRequest.details.text) {
+      mediaRequest.details.text = finalText;
+    }
+    if (!mediaRequest.details.mood && userIntent && userIntent.mood) {
+      mediaRequest.details.mood = userIntent.mood;
+    }
+    if (!mediaRequest.details.language) {
+      mediaRequest.details.language = language;
+    }
+    if (!mediaRequest.details.style && ai && ai.tone) {
+      mediaRequest.details.style = ai.tone;
+    }
+  }
+
+  // 5) Se il core non ha già deciso un mediaRequest,
+  //    possiamo decidere noi di trasformare la risposta in AUDIO automatico
+  if (!mediaRequest && shouldReplyWithAudio(message, finalText, userIntent, { language })) {
+    mediaRequest = {
+      type: 'audio',
+      details: {
+        // Testo da usare come script per il TTS
+        scenePrompt: finalText,
+        text: finalText,
+        mood: userIntent && userIntent.mood ? userIntent.mood : null,
+        language,
+      }
+    };
+  }
+
+  // Ritorna nel formato compatibile con server-ws.js
+  return {
+    output: finalText,
+    type: mediaRequest?.type || 'chat',
+    mediaRequested: !!mediaRequest,
+    mediaRequest,
+    actions: result.actions || [],
+    updatedState: result.updatedState
+  };
+}
+
+/**
+ * Compat wrapper usato in alcune parti legacy
  */
 async function processInteraction(npcData, userMessage, userId, history = []) {
-    try {
-        // 1. Validate and load persona
-        const npc = PersonaEngine.validatePersona(npcData);
+  const result = await think({
+    npcId: npcData.id,
+    userId,
+    groupId: null,
+    message: userMessage,
+    history,
+    metadata: { language: 'it' }
+  });
 
-        // 2. Analyze intent
-        const intent = IntentEngine.analyze(userMessage);
-
-        // 2b. Check for media intent
-        const mediaIntent = MediaIntentEngine.detectIntent(userMessage);
-        const isConfirmation = MediaIntentEngine.isConfirmation(userMessage);
-        const pendingMedia = MediaIntentEngine.checkPendingConfirmation(history);
-
-        // 3. Retrieve memory context
-        const context = await MemoryEngine.getRelevantContext(npcData.id, userId, userMessage);
-
-        // 4. Process experience (evolution)
-        const xpUpdates = ExperienceEngine.processInteraction(npc, userMessage, intent.sentiment);
-
-        // 5. Calculate current mood
-        const currentMood = PersonaEngine.calculateMood(npc, [{ sentiment: intent.sentiment }]);
-
-        // 6. Build dynamic prompt
-        const systemPrompt = buildSentientPrompt(
-            npc,
-            { id: userId },
-            { recentMessages: history.map(h => ({ senderName: h.role === 'user' ? 'Utente' : npc.name, content: h.content })) },
-            { longTermAiMemory: context.user_history, shared_facts: context.shared_facts },
-            userMessage,
-            { useAdvancedEngines: true, mood: currentMood, intent, xpUpdates }
-        );
-
-        return {
-            systemPrompt,
-            npcStateUpdates: {
-                stats: npc.stats,
-                traits: npc.traits,
-                ...xpUpdates
-            },
-            xpUpdates,
-            intent,
-            mood: currentMood,
-            mediaIntent,
-            isConfirmation,
-            pendingMedia
-        };
-
-    } catch (error) {
-        console.error('❌ Error in processInteraction:', error);
-        // Fallback to simple processing
-        return {
-            systemPrompt: buildSentientPrompt(
-                npcData,
-                { id: userId },
-                { recentMessages: [] },
-                { longTermAiMemory: npcData.long_term_memory },
-                userMessage
-            ),
-            npcStateUpdates: null,
-            xpUpdates: null,
-            intent: null,
-            mood: 'neutral'
-        };
-    }
+  return {
+    systemPrompt: result.text,
+    npcStateUpdates: result.updatedState,
+    xpUpdates: result.updatedState?.xpDelta,
+    intent: result.updatedState?.actions,
+    mood: result.updatedState?.mood,
+    mediaIntent: result.mediaRequest,
+    isConfirmation: false,
+    pendingMedia: null
+  };
 }
 
 /**
- * Generate intelligent response using Brain Engine
- * @param {Object} params - Parameters for generation
- * @param {Object} params.ai - AI/girlfriend data
- * @param {Object} params.user - User data
- * @param {Object|null} params.group - Group data (null for 1-to-1 chat)
- * @param {string} params.message - User's message
- * @param {Array} params.recentMessages - Recent messages for context
- * @param {boolean} params.useAdvancedEngines - Use advanced engine orchestration
- * @returns {Promise<{output: string, type: string, stateUpdates: Object|null}>}
+ * MediaUnderstandingEngine:
+ * analizza immagini e audio utente tramite Replicate
+ * (usato da server-ws.js, NON cambiare la firma pubblica).
  */
-async function generateIntelligentResponse(ai, user, message, group = null, recentMessages = [], generateChatReplyFn) {
+const MediaUnderstandingEngine = {
+  /**
+   * Analizza media (image/audio) e ritorna:
+   * - analysis
+   * - emotionalImpact
+   * - memoryRecord
+   * - reaction (testo base da poter usare)
+   */
+  async processReceivedMedia(type, url, girlfriend = null, userId = null) {
     try {
-        let systemPrompt;
-        let stateUpdates = null;
+      let analysis = {};
+      let emotionalImpact = null;
+      let memoryRecord = null;
+      let reaction = null;
 
-        // Use full orchestration if available
-        if (ai && user && !group) {
-            const processed = await processInteraction(ai, message, user?.id, recentMessages || []);
-            systemPrompt = processed.systemPrompt;
-            stateUpdates = processed.npcStateUpdates;
+      if (type === 'image') {
+        analysis = await analyzeImage(url);
 
-            // ===== MEDIA INTENT HANDLING =====
-            // Check if user confirmed a pending media request
-            if (processed.isConfirmation && processed.pendingMedia) {
-                console.log(`✅ User confirmed ${processed.pendingMedia} request. Generating media...`);
-                return {
-                    output: `Perfetto! Sto preparando ${processed.pendingMedia === 'photo' ? 'la foto' : processed.pendingMedia === 'video' ? 'il video' : 'l\'audio'}... 😘`,
-                    type: processed.pendingMedia,
-                    mediaRequested: true, // Signal to server-ws to generate media
-                    stateUpdates
-                };
-            }
-
-            // Check if user is requesting new media
-            if (processed.mediaIntent) {
-                console.log(`📸 Media intent detected: ${processed.mediaIntent}`);
-                const confirmationMsg = MediaIntentEngine.generateConfirmationRequest(processed.mediaIntent, ai);
-                return {
-                    output: confirmationMsg,
-                    type: 'chat',
-                    mediaRequested: false,
-                    pendingMediaType: processed.mediaIntent, // Store for next interaction
-                    stateUpdates
-                };
-            }
-
-        } else {
-            // Use simple sentient prompt
-            const groupData = group ? {
-                name: group.name || 'Gruppo',
-                members: group.members || [],
-                recentMessages: (recentMessages || []).map(m => ({
-                    senderName: m.sender_name || 'Utente',
-                    content: m.content
-                }))
-            } : {
-                recentMessages: (recentMessages || []).map(m => ({
-                    senderName: m.role === 'user' ? (user?.name || 'Utente') : (ai?.name || 'AI'),
-                    content: m.content
-                }))
-            };
-
-            const memories = {
-                longTermAiMemory: ai?.long_term_memory || null,
-                groupMemory: group ? {
-                    dynamics: group.dynamics || {}
-                } : null
-            };
-
-            systemPrompt = buildSentientPrompt(ai, user, groupData, memories, message);
-        }
-
-        // Call LLM to generate response using injected function
-        if (!generateChatReplyFn || typeof generateChatReplyFn !== 'function') {
-            throw new Error("generateChatReplyFn is required and must be a function");
-        }
-
-        // Note: generateChatReply signature is (userMessage, tone, girlfriend, userMemory, overrideSystemPrompt, history)
-        // We are using overrideSystemPrompt here
-        const responseObj = await generateChatReplyFn(message, null, null, null, systemPrompt);
-        const response = responseObj.output || responseObj;
-
-        // Determine response type (chat, image, video, audio)
-        let type = 'chat';
-        const lowerResponse = response.toLowerCase();
-
-        if (lowerResponse.includes('[image]') || lowerResponse.includes('[foto]')) {
-            type = 'image';
-        } else if (lowerResponse.includes('[video]')) {
-            type = 'video';
-        } else if (lowerResponse.includes('[audio]') || lowerResponse.includes('[voce]')) {
-            type = 'audio';
-        }
-
-        return {
-            output: response.replace(/\[(image|foto|video|audio|voce)\]/gi, '').trim(),
-            type,
-            stateUpdates  // Return state updates for persistence
+        emotionalImpact = {
+          attachment: analysis.containsUserFace ? 3 : 1,
+          intimacy: analysis.context === 'selfie' ? 3 : 1,
+          trust: 1,
+          mood: analysis.emotion || 'neutral'
         };
 
-    } catch (error) {
-        console.error('❌ Error in generateIntelligentResponse:', error);
-        // Fallback response
-        return {
-            output: "Mmm... sto cercando le parole giuste per rispondere 😘",
-            type: 'chat',
-            stateUpdates: null
+        reaction = this._buildImageReaction(analysis, girlfriend);
+
+        memoryRecord = {
+          kind: 'user_image',
+          url,
+          summary: analysis.description || 'foto ricevuta',
+          tags: analysis.tags || [],
+          emotion: analysis.emotion || null,
+          created_at: new Date().toISOString()
         };
+      } else if (type === 'audio') {
+        analysis = await analyzeAudio(url);
+
+        emotionalImpact = {
+          attachment: analysis.userIsTalking ? 2 : 1,
+          intimacy: (analysis.tones || []).includes('flirt') ? 3 : 1,
+          trust: 2,
+          mood: analysis.emotion || 'neutral'
+        };
+
+        reaction = this._buildAudioReaction(analysis, girlfriend);
+
+        memoryRecord = {
+          kind: 'user_audio',
+          url,
+          transcription: analysis.transcription || null,
+          emotion: analysis.emotion || null,
+          tones: analysis.tones || [],
+          created_at: new Date().toISOString()
+        };
+      } else {
+        analysis = { type, url };
+        emotionalImpact = null;
+        memoryRecord = { type, url, created_at: new Date().toISOString() };
+        reaction = null;
+      }
+
+      return {
+        analysis,
+        emotionalImpact,
+        memoryRecord,
+        reaction
+      };
+    } catch (err) {
+      console.error('[MediaUnderstandingEngine] Error processing media:', err);
+      return {
+        analysis: { type, url, error: err?.message },
+        emotionalImpact: null,
+        memoryRecord: { type, url, error: err?.message, created_at: new Date().toISOString() },
+        reaction: null
+      };
     }
-}
+  },
 
-// Export consolidated brain engine
-const brainEngine = {
-    buildSentientPrompt,
-    generateIntelligentResponse,
-    processInteraction,  // NEW: Full orchestration
-    MediaUnderstandingEngine  // NEW: Media analysis
+  /**
+   * Prompt di contesto che viene appeso al testo utente in server-ws.js
+   */
+  generateContextPrompt(analysis, type) {
+    const descr = analysis?.description || '';
+    const emo = analysis?.emotion || analysis?.primary_emotion || 'neutral';
+
+    return `
+[CONTESTO MEDIA]
+L'utente ti ha inviato un ${type}.
+Analisi automatica:
+- Descrizione: ${descr}
+- Emozione percepita: ${emo}
+- Dettagli tecnici: ${JSON.stringify(analysis)}
+
+Rispondi in modo coerente con questo media: fai riferimento al contenuto,
+alla situazione e al tono emotivo. Non essere servizievole, non fare la psicologa:
+parla come un personaggio vivo, che reagisce spontaneamente al media ricevuto.
+`;
+  },
+
+  async updateNpcMemory(_girlfriend, _record) {
+    // Hook per futura integrazione con Supabase (memoria multimediale).
+    return;
+  },
+
+  _buildImageReaction(analysis, girlfriend) {
+    const name = girlfriend?.name || 'Lei';
+    if (analysis.containsUserFace && analysis.smile) {
+      return `${name} nota il tuo sorriso e si scioglie un po'.`;
+    }
+    if (analysis.context === 'selfie') {
+      return `${name} guarda il tuo selfie e ti immagina ancora più vicino.`;
+    }
+    if (analysis.description) {
+      return `${name} osserva la tua foto: "${analysis.description}".`;
+    }
+    return `${name} osserva la tua foto con attenzione e curiosità.`;
+  },
+
+  _buildAudioReaction(analysis, girlfriend) {
+    const name = girlfriend?.name || 'Lei';
+    if (analysis.transcription && (analysis.tones || []).includes('flirt')) {
+      return `${name} ascolta la tua voce e sente chiaramente quel tono malizioso...`;
+    }
+    if (analysis.transcription) {
+      return `${name} ti ascolta e rimane colpita da ciò che dici.`;
+    }
+    return `${name} ascolta il tuo audio e prova a immaginare il tuo stato d'animo.`;
+  }
 };
 
-module.exports = { brainEngine, buildSentientPrompt, generateIntelligentResponse, processInteraction, MediaUnderstandingEngine };
+const brainEngine = {
+  generateIntelligentResponse
+};
 
+function buildSentientPrompt() {
+  // placeholder per compatibilità legacy
+  return '';
+}
+
+async function generateNpcInitiativeMessage(npcData, user) {
+  const userId = user?.id || user?.user_id || user;
+  if (!npcData?.id || !userId) throw new Error('missing npc or user for initiative');
+
+  // Carica profilo NPC (senza salvare)
+  const npc = npcData;
+
+  // Recupera ultimi messaggi
+  const { data: historyRows } = await supabase
+    .from('messages')
+    .select('role, content, created_at')
+    .eq('user_id', userId)
+    .eq('npc_id', npc.id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+  const history = (historyRows || []).reverse();
+
+  const context = {
+    npcId: npc.id,
+    npcName: npc.name,
+    userId,
+    message: 'Scrivi tu un messaggio spontaneo all’utente.',
+    history,
+    npc,
+    userLanguage: user?.language || 'it',
+  };
+
+  const processedContext = InputLayer.process(context, npc.name);
+  const memory = MemoryLayer.gatherMemory({ ...context, npc });
+  const perception = PerceptionLayer.analyze(processedContext);
+  const motivation = {
+    primaryIntent: 'initiative',
+    secondaryIntents: [],
+    motivation: 'engage',
+  };
+  const personaState = buildPersonaState(processedContext, motivation, perception);
+
+  const prompt = PromptBuilder.buildPrompt({
+    ...processedContext,
+    npc,
+    motivation,
+    mediaAnalysis: perception.visionAnalysis || perception.audioAnalysis,
+    memory,
+    history,
+    perception,
+    userLanguage: context.userLanguage || 'it',
+  });
+
+  const messagesArray = [
+    { role: 'system', content: prompt },
+    { role: 'user', content: 'Scrivi un messaggio spontaneo e breve per l’utente.' },
+  ];
+
+  const llmResponse = await generate(messagesArray, npc?.model_override || null);
+
+  return {
+    text: (llmResponse || '').trim(),
+    girlfriendId: npc.id,
+  };
+}
+
+module.exports = {
+  brainEngine,
+  buildSentientPrompt,
+  generateIntelligentResponse,
+  processInteraction,
+  MediaUnderstandingEngine,
+  MediaIntentEngine,
+  generateNpcInitiativeMessage,
+};

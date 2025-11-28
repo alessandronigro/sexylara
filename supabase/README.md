@@ -63,7 +63,7 @@ OPENROUTER_API_KEY=your_openrouter_key
 ```typescript
 // POST https://your-project.supabase.co/functions/v1/ai_chat
 {
-  "girlfriendId": "uuid-girlfriend-id",
+  "npcId": "uuid-npc-id",
   "userId": "uuid-user-id",
   "userMessage": "Ciao, come stai?"
 }
@@ -80,7 +80,7 @@ OPENROUTER_API_KEY=your_openrouter_key
 ```typescript
 // POST https://your-project.supabase.co/functions/v1/update_memory
 {
-  "chat_id": "uuid-girlfriend-id"
+  "chat_id": "uuid-npc-id"
 }
 
 // Response
@@ -108,7 +108,7 @@ OPENROUTER_API_KEY=your_openrouter_key
 - Il riassunto include: stato emotivo, temi ricorrenti, evoluzione della relazione
 
 ### 3. **chat_memory** - Tabella memoria
-- `chat_id`: ID della girlfriend (chiave primaria)
+- `chat_id`: ID della npc (chiave primaria)
 - `summary`: Riassunto sintetico della conversazione
 - `updated_at`: Timestamp ultimo aggiornamento
 
@@ -125,7 +125,7 @@ OPENROUTER_API_KEY=your_openrouter_key
 Modifica il tuo `ChatService` per usare la Edge Function invece del backend Node.js:
 
 ```dart
-Future<String> sendMessage(String girlfriendId, String message) async {
+Future<String> sendMessage(String npcId, String message) async {
   final response = await http.post(
     Uri.parse('${Config.supabaseUrl}/functions/v1/ai_chat'),
     headers: {
@@ -133,7 +133,7 @@ Future<String> sendMessage(String girlfriendId, String message) async {
       'Content-Type': 'application/json',
     },
     body: jsonEncode({
-      'girlfriendId': girlfriendId,
+      'npcId': npcId,
       'userId': SupabaseService.currentUser?.id,
       'userMessage': message,
     }),
@@ -244,7 +244,7 @@ Il sistema di **chat di gruppo** permette conversazioni naturali tra l'utente e 
 
 Quando l'utente invia un messaggio:
 
-1. **Carica membri AI** del gruppo (da `group_members` + `girlfriends`)
+1. **Carica membri AI** del gruppo (da `group_members` + `npcs`)
 2. **Recupera ultimi 20 messaggi** per contesto
 3. **Carica memoria collettiva** (storia, dinamiche, relazioni)
 4. **Per ogni AI nel gruppo**:
@@ -429,8 +429,8 @@ supabase functions logs update_group_memory --tail
 **Errore: "Missing OPENROUTER_API_KEY"**
 → Configura la variabile nelle Edge Function Secrets
 
-**Errore: "Girlfriend not found"**
-→ Verifica che il `girlfriendId` esista nella tabella `girlfriends`
+**Errore: "NPC not found"**
+→ Verifica che il `npcId` esista nella tabella `npcs`
 
 **La memoria non si aggiorna**
 → Controlla i logs: `supabase functions logs update_memory`

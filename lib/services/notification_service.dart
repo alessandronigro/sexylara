@@ -47,9 +47,9 @@ class NotificationService {
   }
 
   Future<void> showMessageNotification({
-    required String girlfriendName,
+    required String npcName,
     required String message,
-    required String girlfriendId,
+    required String npcId,
     String? avatarUrl,
   }) async {
     const androidDetails = AndroidNotificationDetails(
@@ -75,18 +75,18 @@ class NotificationService {
     );
 
     await _notifications.show(
-      girlfriendId.hashCode,
-      girlfriendName,
+      npcId.hashCode,
+      npcName,
       message,
       details,
-      payload: girlfriendId,
+      payload: npcId,
     );
   }
 
   Future<void> showMediaNotification({
-    required String girlfriendName,
+    required String npcName,
     required String mediaType,
-    required String girlfriendId,
+    required String npcId,
   }) async {
     String message;
     switch (mediaType) {
@@ -104,9 +104,9 @@ class NotificationService {
     }
 
     await showMessageNotification(
-      girlfriendName: girlfriendName,
+      npcName: npcName,
       message: message,
-      girlfriendId: girlfriendId,
+      npcId: npcId,
     );
   }
 

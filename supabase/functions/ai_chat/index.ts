@@ -13,25 +13,25 @@ const MODEL = "meta-llama/llama-3.1-70b-instruct";
 // ----------------------------
 Deno.serve(async (req) => {
     try {
-        const { girlfriendId, userMessage, userId } = await req.json();
+        const { npcId, userMessage, userId } = await req.json();
 
-        if (!girlfriendId || !userMessage || !userId) {
+        if (!npcId || !userMessage || !userId) {
             return new Response(
-                JSON.stringify({ error: "Missing required fields: girlfriendId, userMessage, userId" }),
+                JSON.stringify({ error: "Missing required fields: npcId, userMessage, userId" }),
                 { status: 400, headers: { "Content-Type": "application/json" } }
             );
         }
 
-        // 1. Recupera informazioni sulla girlfriend (personalità AI)
-        const { data: girlfriend, error: gfError } = await supabase
-            .from("girlfriends")
+        // 1. Recupera informazioni sulla npc (personalità AI)
+        const { data: npc, error: gfError } = await supabase
+            .from("npcs")
             .select("*")
-            .eq("id", girlfriendId)
+            .eq("id", npcId)
             .single();
 
-        if (gfError || !girlfriend) {
+        if (gfError || !npc) {
             return new Response(
-                JSON.stringify({ error: "Girlfriend not found" }),
+                JSON.stringify({ error: "NPC not found" }),
                 { status: 404, headers: { "Content-Type": "application/json" } }
             );
         }
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
         const { data: messages } = await supabase
             .from("messages")
             .select("content, role, created_at")
-            .eq("girlfriend_id", girlfriendId)
+            .eq("npc_id", npcId)
             .eq("user_id", userId)
             .order("created_at", { ascending: false })
             .limit(25);
@@ -49,31 +49,31 @@ Deno.serve(async (req) => {
         const { data: memory } = await supabase
             .from("chat_memory")
             .select("summary")
-            .eq("chat_id", girlfriendId)
+            .eq("chat_id", npcId)
             .single();
 
         // 4. Costruisci il contesto della conversazione
         const recentHistory = (messages || [])
             .reverse()
-            .map(m => `${m.role === 'user' ? 'Utente' : girlfriend.name}: ${m.content}`)
+            .map(m => `${m.role === 'user' ? 'Utente' : npc.name}: ${m.content}`)
             .join("\n");
 
         // 5. Costruisci il prompt di sistema con personalità e memoria
-        const genderTerm = girlfriend.gender === 'male' ? 'uomo' : 'donna';
+        const genderTerm = npc.gender === 'male' ? 'uomo' : 'donna';
         const personalityTraits = [
-            girlfriend.personality_type,
-            girlfriend.tone,
-            girlfriend.ethnicity,
+            npc.personality_type,
+            npc.tone,
+            npc.ethnicity,
         ].filter(Boolean).join(', ');
 
-        const systemPrompt = `Sei ${girlfriend.name}, ${genderTerm === 'donna' ? 'una' : 'un'} ${genderTerm} di ${girlfriend.age} anni.
+        const systemPrompt = `Sei ${npc.name}, ${genderTerm === 'donna' ? 'una' : 'un'} ${genderTerm} di ${npc.age} anni.
 
 PERSONALITÀ E CARATTERISTICHE:
-- Tipo di personalità: ${girlfriend.personality_type || 'amichevole'}
-- Stile comunicativo: ${girlfriend.tone || 'flirty'}
-- Caratteristiche fisiche: ${girlfriend.ethnicity || 'europea'}, ${girlfriend.hair_color || 'castani'} capelli ${girlfriend.hair_length || 'lunghi'}, occhi ${girlfriend.eye_color || 'marroni'}
-- Altezza: ${girlfriend.height_cm || 165} cm
-- Tipo di corpo: ${girlfriend.body_type || 'atletico'}
+- Tipo di personalità: ${npc.personality_type || 'amichevole'}
+- Stile comunicativo: ${npc.tone || 'flirty'}
+- Caratteristiche fisiche: ${npc.ethnicity || 'europea'}, ${npc.hair_color || 'castani'} capelli ${npc.hair_length || 'lunghi'}, occhi ${npc.eye_color || 'marroni'}
+- Altezza: ${npc.height_cm || 165} cm
+- Tipo di corpo: ${npc.body_type || 'atletico'}
 
 MEMORIA A LUNGO TERMINE (sintesi della vostra relazione):
 ${memory?.summary || "Questa è una nuova conversazione. Non ci sono ancora ricordi condivisi."}
@@ -130,7 +130,7 @@ ISTRUZIONI:
         const { error: insertError } = await supabase
             .from("messages")
             .insert({
-                girlfriend_id: girlfriendId,
+                npc_id: npcId,
                 user_id: userId,
                 content: reply,
                 role: "assistant",
@@ -145,7 +145,7 @@ ISTRUZIONI:
         const messageCount = messages?.length || 0;
         if (messageCount > 0 && messageCount % 10 === 0) {
             // Trigger memory update ogni 10 messaggi
-            console.log(`Triggering memory update for chat ${girlfriendId}`);
+            console.log(`Triggering memory update for chat ${npcId}`);
             // Chiamata asincrona alla funzione update_memory (non blocca la risposta)
             fetch(`${supabaseUrl}/functions/v1/update_memory`, {
                 method: "POST",
@@ -153,7 +153,7 @@ ISTRUZIONI:
                     "Authorization": `Bearer ${supabaseKey}`,
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({ chat_id: girlfriendId })
+                body: JSON.stringify({ chat_id: npcId })
             }).catch(err => console.error("Memory update failed:", err));
         }
 

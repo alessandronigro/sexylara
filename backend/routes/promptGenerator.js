@@ -2,6 +2,8 @@
 // Consolidated prompt generation service for different media types
 const fetch = require("node-fetch");
 
+const env = process.env.NODE_ENV || 'development';
+
 /**
  * Generate specialized prompts for different media types
  * @param {string} userMessage - User's request
@@ -24,6 +26,18 @@ const generatePrompt = async (userMessage, type = 'image', options = {}) => {
 
     const systemPrompt = getSystemPrompt(type, language);
 
+    if (env !== 'production') {
+        try {
+            console.log("\n\n==================== VENICE REQUEST (promptGenerator) ====================");
+            console.log("MODEL:", process.env.MODEL_VENICE);
+            console.log("---- SYSTEM PROMPT ----\n", systemPrompt);
+            console.log("---- USER MESSAGE ----\n", contextMessage);
+            console.log("==========================================================================\n\n");
+        } catch (err) {
+            console.warn("⚠️ Failed to log Venice payload (promptGenerator):", err);
+        }
+    }
+
     const response = await fetch(process.env.ADDRESS_VENICE, {
         method: "POST",
         headers: {
@@ -40,6 +54,12 @@ const generatePrompt = async (userMessage, type = 'image', options = {}) => {
     });
 
     const data = await response.json();
+    if (env !== 'production') {
+        console.log("\n\n==================== VENICE RESPONSE (promptGenerator) ====================");
+        console.log(JSON.stringify(data, null, 2));
+        console.log("==========================================================================\n\n");
+    }
+
     const content = data?.choices?.[0]?.message?.content || getDefaultPrompt(type);
 
     return content;

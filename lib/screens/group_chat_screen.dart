@@ -454,8 +454,8 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       // Assuming route /chat/profile/:id exists and handles AI profiles
       // If not, we might need to check routes. But usually it's /chat/profile
       // Or we can push the screen directly if we have the widget imported.
-      // Let's try context.push assuming the route exists, otherwise we might need to import GirlfriendProfileScreen.
-      // Checking previous context, likely '/chat/profile' is for 'my' girlfriends. 
+      // Let's try context.push assuming the route exists, otherwise we might need to import NpcProfileScreen.
+      // Checking previous context, likely '/chat/profile' is for 'my' npcs. 
       // Public AI might need a different route or just reuse it if it fetches by ID.
       // Let's use a safe approach: show a bottom sheet with details and action.
       

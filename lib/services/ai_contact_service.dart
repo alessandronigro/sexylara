@@ -54,7 +54,7 @@ class AiContact {
   final String? tone;
   final bool isPublic;
   final bool isOwned;
-  final String type; // 'ai_contact' or 'girlfriend'
+  final String type; // 'ai_contact' or 'npc'
   final double rating;
   final String? description;
 

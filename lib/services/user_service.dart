@@ -59,15 +59,15 @@ class UserService {
     }
   }
 
-  Future<void> updateGirlfriendPrivacy(String gfId, bool isPublic) async {
+  Future<void> updateNpcPrivacy(String gfId, bool isPublic) async {
     final resp = await http.put(
-      Uri.parse('$_base/users/girlfriends/$gfId/privacy'),
+      Uri.parse('$_base/users/npcs/$gfId/privacy'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({'isPublic': isPublic}),
     );
 
     if (resp.statusCode != 200) {
-      throw Exception('Failed to update girlfriend privacy');
+      throw Exception('Failed to update npc privacy');
     }
   }
 }

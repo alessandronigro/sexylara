@@ -49,7 +49,7 @@ router.post('/invite/npc', requireGroupPermission('invite_npc'), async (req, res
 
     try {
         // 1. Recupera dati NPC e Gruppo
-        const { data: npc } = await supabase.from('girlfriends').select('*').eq('id', npcId).single();
+        const { data: npc } = await supabase.from('npcs').select('*').eq('id', npcId).single();
         const { data: group } = await supabase.from('groups').select('*').eq('id', groupId).single();
         const { data: sender } = await supabase.from('users').select('*').eq('id', senderId).single(); // Mock user table
         const { data: members } = await supabase.from('group_members').select('*').eq('group_id', groupId);

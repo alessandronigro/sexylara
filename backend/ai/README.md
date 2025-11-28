@@ -12,40 +12,36 @@ Un layer intelligente sopra Venice che trasforma le AI da "chatbot" a **companio
 ## 🚀 Setup
 
 ### 1. Crea le tabelle nel database
-Esegui il file `backend/ai/schema.sql` su Supabase:
+Esegui **supabase/ddl.sql** (include `npc_profiles` JSONB) su Supabase:
 ```bash
-# Copia il contenuto di schema.sql e eseguilo nel SQL Editor di Supabase
+# Copia il contenuto di supabase/ddl.sql nel SQL Editor di Supabase e "Run"
 ```
 
 ### 2. Il Brain Engine è già importato
-Il file `server-ws.js` ora importa automaticamente il Brain Engine.
+`server-ws.js` importa il wrapper compatibile `backend/ai/brainEngine.js` che inoltra verso `backend/ai/brain/BrainEngine` e salva lo stato NPC in `npc_profiles.data`.
 
-### 3. Usa il Brain Engine nelle tue chat
+### 3. Usa il Brain Engine nelle tue chat (firma posizionale)
 
 #### Esempio: Chat di gruppo
 ```javascript
-// Prima (senza Brain Engine):
-const { output } = await generateChatReply(text, ai.tone, ai, null, systemContext);
-
-// Dopo (con Brain Engine):
-const response = await brainEngine.generateIntelligentResponse({
-  ai: ai,                    // L'AI che risponde
-  user: userProfile,         // Profilo utente
-  group: groupData,          // Dati gruppo (opzionale)
-  message: text,             // Messaggio utente
-  recentMessages: recentMsgs // Ultimi messaggi
-});
+const response = await brainEngine.generateIntelligentResponse(
+  ai,             // NPC (id richiesto)
+  userProfile,    // Profilo utente (id richiesto)
+  text,           // Messaggio utente
+  groupData,      // Dati gruppo (opzionale)
+  recentMsgs      // Ultimi messaggi (opzionale)
+);
 ```
 
 #### Esempio: Chat 1-to-1
 ```javascript
-const response = await brainEngine.generateIntelligentResponse({
-  ai: girlfriend,
-  user: userProfile,
-  group: null,  // null per chat 1-to-1
-  message: text,
-  recentMessages: conversationHistory
-});
+const response = await brainEngine.generateIntelligentResponse(
+  girlfriend,
+  userProfile,
+  text,
+  null,                // nessun gruppo per 1-to-1
+  conversationHistory  // opzionale
+);
 ```
 
 ## 🧩 Come funziona
@@ -87,11 +83,16 @@ const response = await brainEngine.generateIntelligentResponse({
 └─────────────────────────────────────┘
 ```
 
-### 4. **Generazione con Venice**
+### 4. **Generazione con router Venice/Ollama**
 ```
 ┌─────────────────────────────────────┐
-│  Venice genera risposta usando      │
-│  il prompt intelligente             │
+│  Router LLM sceglie il modello:     │
+│  • Venice (MODEL_VENICE*) per toni  │
+│    soft/flirty/romantic             │
+│  • Ollama llama2-uncensored per     │
+│    toni explicit/nsfw               │
+│  in base a npc.preferences.tone_mode│
+│  e ai flag utente                   │
 └─────────────────────────────────────┘
 ```
 

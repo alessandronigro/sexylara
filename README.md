@@ -1,6 +1,6 @@
-# 🎭 ThrillMe - AI Multi-Girlfriend Chat Platform
+# 🎭 ThrillMe - AI Multi-NPC Chat Platform
 
-> **Piattaforma di chat AI con supporto multi-girlfriend, gruppi, e generazione contenuti multimediali**
+> **Piattaforma di chat AI con supporto multi-npc, gruppi, e generazione contenuti multimediali**
 
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
 [![Node](https://img.shields.io/badge/node-18.x-blue.svg)]()
@@ -157,7 +157,7 @@ sexylara/
 
 ### ✅ Implementate
 
-- [x] **Chat 1-to-1** con AI girlfriends personalizzate
+- [x] **Chat 1-to-1** con AI npcs personalizzate
 - [x] **Chat di gruppo** con più AI e utenti reali
 - [x] **Generazione contenuti**:
   - [x] Immagini (Replicate Flux)
@@ -227,7 +227,7 @@ Vedi [ARCHITECTURE.md](./ARCHITECTURE.md#sistema-ai) per dettagli completi.
 
 - `users` - Utenti (Supabase Auth)
 - `user_profile` - Profili utente estesi
-- `girlfriends` - AI girlfriends
+- `npcs` - AI npcs
 - `messages` - Messaggi chat 1-to-1
 - `groups` - Gruppi
 - `group_members` - Membri gruppi
@@ -246,10 +246,10 @@ Vedi [ARCHITECTURE.md](./ARCHITECTURE.md#database-schema) per schema completo.
 
 ```
 POST   /api/generate-avatar
-GET    /api/chat-history/:userId/:girlfriendId
+GET    /api/chat-history/:userId/:npcId
 POST   /api/photos/comment
-GET    /api/girlfriend-gallery/:userId/:girlfriendId
-DELETE /api/girlfriend/:id
+GET    /api/npc-gallery/:userId/:npcId
+DELETE /api/npc/:id
 
 GET    /api/groups
 POST   /api/groups
@@ -270,7 +270,7 @@ Client → Server:
 {
   "text": "messaggio",
   "traceId": "uuid",
-  "girlfriend_id": "uuid",  // per chat 1-to-1
+  "npc_id": "uuid",  // per chat 1-to-1
   "group_id": "uuid"        // per chat gruppo
 }
 
@@ -518,6 +518,6 @@ Per approfondimenti, consulta:
   
 **Made with ❤️ by Alessandro Nigro**
 
-[⬆ Torna su](#-thrillme---ai-multi-girlfriend-chat-platform)
+[⬆ Torna su](#-thrillme---ai-multi-npc-chat-platform)
 
 </div>

@@ -17,17 +17,20 @@ class ChatService {
   final _controller = StreamController<Message>.broadcast();
   final _statusController = StreamController<String>.broadcast();
   final _ackController = StreamController<Map<String, String>>.broadcast();
+  final _mediaEventController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
-  String? _activeGirlfriendId;
-  String? _activeGirlfriendName;
+  String? _activeNpcId;
+  String? _activeNpcName;
 
   Stream<Message> get messages => _controller.stream;
   Stream<String> get status => _statusController.stream;
   Stream<Map<String, String>> get messageAcks => _ackController.stream;
+  Stream<Map<String, dynamic>> get mediaEvents => _mediaEventController.stream;
 
-  void setActiveChat(String? girlfriendId, String? girlfriendName) {
-    _activeGirlfriendId = girlfriendId;
-    _activeGirlfriendName = girlfriendName;
+  void setActiveChat(String? npcId, String? npcName) {
+    _activeNpcId = npcId;
+    _activeNpcName = npcName;
   }
 
   void connect() {
@@ -40,6 +43,11 @@ class ChatService {
       (event) {
         try {
           final data = jsonDecode(event.toString());
+
+          if (data['event'] != null) {
+            _mediaEventController.add(Map<String, dynamic>.from(data));
+            return;
+          }
 
           if (data['type'] == 'ack' &&
               data['traceId'] != null &&
@@ -69,22 +77,23 @@ class ChatService {
             _controller.add(message);
 
             // Show notification if user is not in this chat
+            final npcId = data['npc_id'] ?? data['npc_id'];
             if (message.role == 'assistant' &&
-                data['girlfriend_id'] != null &&
-                data['girlfriend_id'] != _activeGirlfriendId) {
-              final girlfriendName = _activeGirlfriendName ?? 'Girlfriend';
+                npcId != null &&
+                npcId != _activeNpcId) {
+              final npcName = _activeNpcName ?? 'Companion';
 
               if (message.type == MessageType.text) {
                 _notificationService.showMessageNotification(
-                  girlfriendName: girlfriendName,
+                  npcName: npcName,
                   message: message.content,
-                  girlfriendId: data['girlfriend_id'],
+                  npcId: npcId,
                 );
               } else {
                 _notificationService.showMediaNotification(
-                  girlfriendName: girlfriendName,
+                  npcName: npcName,
                   mediaType: message.type.name,
-                  girlfriendId: data['girlfriend_id'],
+                  npcId: npcId,
                 );
               }
             }
@@ -101,14 +110,14 @@ class ChatService {
     );
   }
 
-  Future<List<Message>> fetchChatHistory(String girlfriendId) async {
+  Future<List<Message>> fetchChatHistory(String npcId) async {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) return [];
 
     try {
       final response = await http.get(
         Uri.parse(
-            '${Config.apiBaseUrl}/api/chat-history/$userId/$girlfriendId?limit=50'),
+            '${Config.apiBaseUrl}/api/chat-history/$userId/$npcId?limit=50'),
       );
 
       if (response.statusCode == 200) {
@@ -125,7 +134,7 @@ class ChatService {
 
   void sendMessage(
     String text, {
-    String? girlfriendId,
+    String? npcId,
     ReplyPreview? replyTo,
     String? mediaType,
     String? mediaUrl,
@@ -133,10 +142,22 @@ class ChatService {
     if (_channel == null) return;
 
     final traceId = _uuid.v4();
+    MessageType resolvedType = MessageType.text;
+    if (mediaType != null) {
+      final lower = mediaType.toLowerCase();
+      if (lower == 'photo' || lower == 'image' || lower == 'couple_photo' || lower == 'media') {
+        resolvedType = MessageType.image;
+      } else if (lower == 'video') {
+        resolvedType = MessageType.video;
+      } else if (lower == 'audio') {
+        resolvedType = MessageType.audio;
+      }
+    }
+
     final payloadMap = {
       'text': text,
       'traceId': traceId,
-      if (girlfriendId != null) 'girlfriend_id': girlfriendId,
+      if (npcId != null) 'npc_id': npcId,
       if (replyTo != null) 'reply_preview': replyTo.toJson(),
       if (mediaType != null) 'mediaType': mediaType,
       if (mediaUrl != null) 'mediaUrl': mediaUrl,
@@ -145,14 +166,13 @@ class ChatService {
     _channel!.sink.add(payload);
 
     _controller.add(Message(
-      id: traceId,
-      role: 'user',
-      type: MessageType.text,
-      content: text,
-      timestamp: DateTime.now(),
-      status: MessageStatus.sent,
-      replyTo: replyTo,
-    ));
+        id: traceId,
+        role: 'user',
+        type: resolvedType,
+        content: mediaUrl ?? text,
+        timestamp: DateTime.now(),
+        status: MessageStatus.sent,
+        replyTo: replyTo));
   }
 
   void dispose() {
@@ -165,6 +185,9 @@ class ChatService {
     }
     if (!_ackController.isClosed) {
       _ackController.close();
+    }
+    if (!_mediaEventController.isClosed) {
+      _mediaEventController.close();
     }
   }
 
