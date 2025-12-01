@@ -122,7 +122,7 @@ class _NpcFeedScreenState extends State<NpcFeedScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bacheca NPC'),
+        title: const Text('Bacheca Thriller'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

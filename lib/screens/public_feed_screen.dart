@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 import '../models/npc_post.dart';
 import '../services/npc_feed_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/comments_sheet.dart';
 import '../widgets/npc_feed_card.dart';
+import '../widgets/main_top_bar.dart';
 
 class PublicFeedScreen extends StatefulWidget {
   const PublicFeedScreen({Key? key}) : super(key: key);
@@ -145,50 +148,61 @@ class _PublicFeedScreenState extends State<PublicFeedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Feed Pubblico'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadFeed,
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: const MainTopBar(active: MainTopBarSection.feed),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1E1E2C), Color(0xFF3A3A5A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(_error!),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadFeed,
-                        child: const Text('Riprova'),
+        ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _error!,
+                            style: GoogleFonts.inter(color: Colors.white),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurpleAccent,
+                            ),
+                            onPressed: _loadFeed,
+                            child: const Text('Riprova'),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-              : _posts.isEmpty
-                  ? const Center(
-                      child: Text('Nessun post nel feed'),
                     )
-                  : RefreshIndicator(
-                      onRefresh: _loadFeed,
-                      child: ListView.builder(
-                        itemCount: _posts.length,
-                        itemBuilder: (context, index) {
-                          final post = _posts[index];
-                          return NpcFeedCard(
-                            post: post,
-                            isLiked: _likedPosts[post.id] ?? false,
-                            onLike: () => _handleLike(post),
-                            onComment: () => _handleComment(post),
-                          );
-                        },
-                      ),
-                    ),
+                  : _posts.isEmpty
+                      ? const Center(
+                          child: Text('Nessun post nel feed'),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadFeed,
+                          child: ListView.builder(
+                            itemCount: _posts.length,
+                            itemBuilder: (context, index) {
+                              final post = _posts[index];
+                              return NpcFeedCard(
+                                post: post,
+                                isLiked: _likedPosts[post.id] ?? false,
+                                onLike: () => _handleLike(post),
+                                onComment: () => _handleComment(post),
+                              );
+                            },
+                          ),
+                        ),
+        ),
+      ),
     );
   }
 }

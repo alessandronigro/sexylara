@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../models/npc.dart';
 import '../services/npc_service.dart';
 import '../services/npc_feed_service.dart';
+import '../services/user_service.dart';
+import '../services/supabase_service.dart';
 import '../widgets/npc_avatar.dart';
 
 class NpcProfileScreen extends StatefulWidget {
@@ -162,6 +164,8 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
             backgroundColor: Colors.green,
           ),
         );
+        // Reindirizza al feed pubblico dopo la pubblicazione
+        context.go('/feed');
       }
     } catch (e) {
       if (mounted) {
@@ -176,13 +180,20 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
   }
 
   Future<void> _deleteNpc() async {
+    final isOwner = _npc?.userId == SupabaseService.currentUser?.id;
+    final title = isOwner ? 'Elimina Thriller' : 'Rimuovi dai contatti';
+    final content = isOwner 
+        ? 'Sei sicuro di voler eliminare ${_npc?.name}?\n\nQuesta azione eliminerà:\n• Il profilo\n• Tutti i messaggi\n• Tutte le foto generate\n• L\'avatar\n\nQuesta azione è irreversibile.'
+        : 'Sei sicuro di voler rimuovere ${_npc?.name} dai tuoi contatti?';
+    final actionLabel = isOwner ? 'Elimina' : 'Rimuovi';
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Elimina Npc', style: TextStyle(color: Colors.white)),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
         content: Text(
-          'Sei sicuro di voler eliminare ${_npc?.name}?\n\nQuesta azione eliminerà:\n• Il profilo\n• Tutti i messaggi\n• Tutte le foto generate\n• L\'avatar\n\nQuesta azione è irreversibile.',
+          content,
           style: const TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -193,7 +204,7 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Elimina'),
+            child: Text(actionLabel),
           ),
         ],
       ),
@@ -206,7 +217,7 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Npc eliminata')),
+          const SnackBar(content: Text('Thriller eliminato')),
         );
         context.go('/'); // Torna alla home
       }
@@ -214,6 +225,41 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Errore eliminazione: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _togglePrivacy(bool isPublic) async {
+    if (_npc == null) return;
+
+    try {
+      final userService = UserService(userId: _npc!.userId);
+      await userService.updateNpcPrivacy(_npc!.id, isPublic);
+      
+      setState(() {
+        _npc = _npc!.copyWith(isPublic: isPublic);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isPublic 
+                ? 'Thriller ora è pubblico e può essere invitato nei gruppi' 
+                : 'Thriller ora è privato',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore aggiornamento privacy: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -228,7 +274,15 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
         title: Text(_npc?.name ?? 'Profilo'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            icon: Icon(
+              (_npc?.userId == SupabaseService.currentUser?.id) 
+                  ? Icons.delete_outline 
+                  : Icons.person_remove,
+              color: Colors.red,
+            ),
+            tooltip: (_npc?.userId == SupabaseService.currentUser?.id) 
+                ? 'Elimina Thriller' 
+                : 'Rimuovi dai contatti',
             onPressed: _deleteNpc,
           ),
         ],
@@ -236,7 +290,7 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Colors.pinkAccent))
           : _npc == null
-              ? const Center(child: Text('Npc non trovata', style: TextStyle(color: Colors.white)))
+              ? const Center(child: Text('Thriller non trovato', style: TextStyle(color: Colors.white)))
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
                   child: Column(
@@ -265,30 +319,87 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // Pulsante rigenera avatar
-                      OutlinedButton.icon(
-                        onPressed: _regeneratingAvatar ? null : _regenerateAvatar,
-                        icon: const Icon(Icons.refresh),
-                        label: Text(_regeneratingAvatar ? 'Generando...' : 'Rigenera Foto Profilo'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.pinkAccent,
-                          side: const BorderSide(color: Colors.pinkAccent),
+                      // Pulsante rigenera avatar (Solo Owner)
+                      if (_npc?.userId == SupabaseService.currentUser?.id)
+                        OutlinedButton.icon(
+                          onPressed: _regeneratingAvatar ? null : _regenerateAvatar,
+                          icon: const Icon(Icons.refresh),
+                          label: Text(_regeneratingAvatar ? 'Generando...' : 'Rigenera Foto Profilo'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.pinkAccent,
+                            side: const BorderSide(color: Colors.pinkAccent),
+                          ),
                         ),
-                      ),
                       
-                      const SizedBox(height: 16),
+                      if (_npc?.userId == SupabaseService.currentUser?.id)
+                        const SizedBox(height: 16),
 
-                      // Pulsante Pubblica nel Feed
-                      ElevatedButton.icon(
-                        onPressed: _publishToFeed,
-                        icon: const Icon(Icons.public),
-                        label: const Text('Pubblica nel Feed Social'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      // Pulsante Pubblica nel Feed (Solo Owner)
+                      if (_npc?.userId == SupabaseService.currentUser?.id)
+                        ElevatedButton.icon(
+                          onPressed: _publishToFeed,
+                          icon: const Icon(Icons.public),
+                          label: const Text('Pubblica nel Feed Social'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
                         ),
-                      ),
+                      
+                      const SizedBox(height: 24),
+
+                      // Privacy Toggle (Solo Owner)
+                      if (_npc?.userId == SupabaseService.currentUser?.id)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1A1A),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _npc!.isPublic ? Colors.green : Colors.grey.shade700,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _npc!.isPublic ? Icons.public : Icons.lock,
+                                color: _npc!.isPublic ? Colors.green : Colors.grey,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _npc!.isPublic ? 'Thriller Pubblico' : 'Thriller Privato',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _npc!.isPublic 
+                                        ? 'Altri utenti possono invitare questo Thriller nei loro gruppi'
+                                        : 'Solo tu puoi usare questo Thriller',
+                                      style: TextStyle(
+                                        color: Colors.grey[400],
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Switch(
+                                value: _npc!.isPublic,
+                                onChanged: _togglePrivacy,
+                                activeColor: Colors.green,
+                              ),
+                            ],
+                          ),
+                        ),
                       
                       const SizedBox(height: 32),
                       
@@ -307,8 +418,17 @@ class _NpcProfileScreenState extends State<NpcProfileScreen> {
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed: _deleteNpc,
-                          icon: const Icon(Icons.delete_forever),
-                          label: const Text('Elimina Npc'),
+                          icon: Icon(
+                            (_npc?.userId == SupabaseService.currentUser?.id) 
+                                ? Icons.delete_forever 
+                                : Icons.person_remove,
+                            color: Colors.red,
+                          ),
+                          label: Text(
+                            (_npc?.userId == SupabaseService.currentUser?.id) 
+                                ? 'Elimina Thriller' 
+                                : 'Rimuovi dai contatti',
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Colors.red),

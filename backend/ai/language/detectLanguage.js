@@ -11,7 +11,8 @@ const keywords = {
 
 function detectLanguage(text) {
   if (!text) return 'en';
-  const lower = text.toLowerCase();
+  const raw = typeof text === 'string' ? text : (text?.toString?.() || '');
+  const lower = raw.toLowerCase();
   let best = 'en';
   let maxHits = 0;
   for (const [lang, words] of Object.entries(keywords)) {

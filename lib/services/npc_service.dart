@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../models/npc.dart';
 import 'supabase_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class NpcService {
   static final _supabase = SupabaseService.client;
@@ -26,13 +28,32 @@ class NpcService {
 
   /// Get single npc by ID
   Future<Npc?> getNpc(String id) async {
-    final response = await _supabase
-        .from('npcs')
-        .select()
-        .eq('id', id)
-        .single();
+    // Prefer backend API to respect access rules (invited/public/owned)
+    final userId = SupabaseService.currentUser?.id;
+    final apiResp = await http.get(
+      Uri.parse('${Config.apiBaseUrl}/api/npcs/$id/public'),
+      headers: {'x-user-id': userId ?? ''},
+    );
+    if (apiResp.statusCode == 200) {
+      final data = jsonDecode(apiResp.body);
+      if (data['npc'] != null) {
+        return Npc.fromJson(data['npc']);
+      }
+    } else if (apiResp.statusCode == 404) {
+      return null;
+    }
 
-    return Npc.fromJson(response);
+    // Fallback to direct Supabase query (for own NPCs)
+    try {
+      final response = await _supabase
+          .from('npcs')
+          .select()
+          .eq('id', id)
+          .single();
+      return Npc.fromJson(response);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Alias for getNpc to match UI usage
@@ -116,7 +137,7 @@ class NpcService {
     } catch (e) {
       print('Error generating avatar: $e');
       // Fallback to placeholder if backend fails
-      return 'https://via.placeholder.com/400';
+      return '${Config.apiBaseUrl}/icons/Icon-192.png';
     }
   }
 

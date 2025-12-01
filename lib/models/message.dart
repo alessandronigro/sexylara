@@ -135,9 +135,13 @@ class Message {
       serverId: serverId,
       replyTo: replyPreview,
       // Group chat fields
-      senderId: json['sender_id']?.toString(),
-      senderName: json['sender_name']?.toString(),
-      avatarUrl: json['avatar']?.toString(),
+      senderId: json['sender_id']?.toString() ??
+          json['senderId']?.toString(),
+      senderName: json['sender_name']?.toString() ??
+          json['senderName']?.toString() ??
+          json['name']?.toString(),
+      avatarUrl: json['avatar']?.toString() ??
+          json['avatar_url']?.toString(),
       isAi: json['is_ai'] as bool?,
     );
   }
@@ -192,5 +196,3 @@ class Message {
     return Message.fromJson(decoded);
   }
 }
-
-

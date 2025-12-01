@@ -1,111 +1,115 @@
 const { supabase } = require('../lib/supabase');
 const generateChatReply = require('../routes/openRouterService');
 
-// Simple in-memory cache
 const groupContextCache = new Map();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 10 * 60 * 1000;
 
-/**
- * Loads group context (members, NPCs, relations)
- * Caches result for 10 minutes.
- */
+const normalizeBehavior = (profile) => ({
+    talkFrequency: Number(profile?.talkFrequency ?? profile?.talk_frequency ?? 0.25) || 0.25,
+    groupRole: profile?.groupRole || profile?.group_role || 'member'
+});
+
 async function loadGroupContext(groupId) {
     const now = Date.now();
-    if (groupContextCache.has(groupId)) {
-        const cached = groupContextCache.get(groupId);
-        if (now - cached.timestamp < CACHE_TTL) {
-            return cached.data;
-        }
-    }
+    const cached = groupContextCache.get(groupId);
+    if (cached && now - cached.timestamp < CACHE_TTL) return cached.data;
 
-    // 1. Fetch group members (users and NPCs)
-    const { data: members, error } = await supabase
+    const { data: members, error: membersError } = await supabase
         .from('group_members')
-        .select(`
-      member_id,
-      member_type,
-      npcs (
-        id, name, bio, personality_type, tone, avatar_url,
-        age, ethnicity, hair_color, eye_color, body_type
-      ),
-      users (
-        id, name, avatar_url
-      )
-    `)
+        .select('member_id, member_type, npc_id, role')
         .eq('group_id', groupId);
-
-    if (error) {
-        console.error('Error loading group context:', error);
+    if (membersError) {
+        console.error('Error loading group context:', membersError);
         return null;
     }
 
-    // 2. Fetch NPC relations (mocked or from DB if table exists)
-    // Assuming ai_relations table exists as seen in schema.sql
-    const { data: relations } = await supabase
+    const npcIds = members
+        .filter(m => m.member_type === 'npc' || m.member_type === 'ai')
+        .map(m => m.npc_id || m.member_id);
+    const userIds = members
+        .filter(m => m.member_type === 'user')
+        .map(m => m.member_id);
+
+    let npcMap = {};
+    if (npcIds.length > 0) {
+        const { data: npcData, error: npcError } = await supabase
+            .from('npcs')
+            .select('id, name, personality_type, tone, age, ethnicity, avatar_url, group_behavior_profile')
+            .in('id', npcIds);
+        if (npcError) console.error('Error loading NPC data:', npcError);
+        npcMap = (npcData || []).reduce((acc, n) => {
+            acc[n.id] = n;
+            return acc;
+        }, {});
+    }
+
+    let userMap = {};
+    if (userIds.length > 0) {
+        const { data: userData, error: userError } = await supabase
+            .from('user_profile')
+            .select('id, name, username, avatar_url')
+            .in('id', userIds);
+        if (userError) console.error('Error loading user data:', userError);
+        userMap = (userData || []).reduce((acc, u) => {
+            acc[u.id] = u;
+            return acc;
+        }, {});
+    }
+
+    const { data: relations, error: relError } = await supabase
         .from('ai_relations')
         .select('*')
         .eq('group_id', groupId);
+    if (relError) console.error('Error loading relations:', relError);
 
     const npcRelations = {};
-    if (relations) {
-        relations.forEach(rel => {
-            if (!npcRelations[rel.ai_id_1]) npcRelations[rel.ai_id_1] = {};
-            if (!npcRelations[rel.ai_id_2]) npcRelations[rel.ai_id_2] = {};
+    (relations || []).forEach(rel => {
+        if (!npcRelations[rel.ai_id_1]) npcRelations[rel.ai_id_1] = {};
+        if (!npcRelations[rel.ai_id_2]) npcRelations[rel.ai_id_2] = {};
+        npcRelations[rel.ai_id_1][rel.ai_id_2] = rel.relationship_type;
+        npcRelations[rel.ai_id_2][rel.ai_id_1] = rel.relationship_type;
+    });
 
-            npcRelations[rel.ai_id_1][rel.ai_id_2] = rel.relationship_type;
-            npcRelations[rel.ai_id_2][rel.ai_id_1] = rel.relationship_type;
-        });
-    }
+    const { data: storedMemory, error: memError } = await supabase
+        .from('group_memory')
+        .select('summary, dynamics')
+        .eq('group_id', groupId)
+        .single();
+    if (memError && memError.code !== 'PGRST116') console.error('Error loading group memory:', memError);
 
-    // 3. Construct Group Memory Object
-    const groupMemory = {
+    const groupContext = {
         groupId,
+        memory: storedMemory || { summary: 'Nessuna memoria salvata.', dynamics: {} },
         members: members.map(m => {
-            if (m.member_type === 'ai' && m.npcs) {
+            if (m.member_type === 'npc' || m.member_type === 'ai') {
+                const npc = npcMap[m.npc_id || m.member_id] || {};
                 return {
-                    id: m.npcs.id,
+                    id: npc.id || m.npc_id || m.member_id,
                     type: 'npc',
-                    name: m.npcs.name,
-                    bio: m.npcs.bio || `A ${m.npcs.age} year old ${m.npcs.ethnicity} woman.`,
-                    personality: m.npcs.personality_type,
-                    traits: m.npcs.tone, // using tone as traits for now
-                    avatar: m.npcs.avatar_url,
-                    // Default group behavior if not present in DB
-                    groupBehavior: m.npcs.group_behavior_profile || {
-                        talkFrequency: 0.25,
-                        interruptStyle: 'polite',
-                        groupRole: 'observer'
-                    }
-                };
-            } else if (m.member_type === 'user' && m.users) {
-                return {
-                    id: m.users.id,
-                    type: 'user',
-                    name: m.users.name || 'User',
-                    bio: 'Group member',
-                    avatar: m.users.avatar_url
+                    name: npc.name || 'NPC',
+                    bio: npc.bio || `${npc.name || 'NPC'}, personalità ${npc.personality_type || ''}`.trim(),
+                    personality: npc.personality_type || 'sconosciuta',
+                    tone: npc.tone || 'neutro',
+                    avatar: npc.avatar_url || null,
+                    groupBehavior: normalizeBehavior(npc.group_behavior_profile || {})
                 };
             }
-            return null;
-        }).filter(Boolean),
+            const user = userMap[m.member_id] || {};
+            return {
+                id: user.id || m.member_id,
+                type: 'user',
+                name: user.username || user.name || 'Utente',
+                avatar: user.avatar_url || null
+            };
+        }),
         npcRelations
     };
 
-    // Save to cache
-    groupContextCache.set(groupId, {
-        timestamp: now,
-        data: groupMemory
-    });
-
-    return groupMemory;
+    groupContextCache.set(groupId, { timestamp: now, data: groupContext });
+    return groupContext;
 }
 
-/**
- * Registers an NPC in a group if not already registered.
- * Creates initial knowledge card.
- */
 async function registerNpcInGroup(npc, groupId) {
-    // Check if already registered in npc_group_state
     const { data: existing } = await supabase
         .from('npc_group_state')
         .select('id')
@@ -114,180 +118,191 @@ async function registerNpcInGroup(npc, groupId) {
         .single();
 
     if (!existing) {
-        // Create knowledge card
         const groupContext = await loadGroupContext(groupId);
-        const knownMembers = groupContext ? groupContext.members.map(m => m.id) : [];
+        const knownMembers = (groupContext?.members || []).map(m => m.id);
 
-        await supabase
-            .from('npc_group_state')
-            .insert({
-                npc_id: npc.id,
-                group_id: groupId,
-                known_members: knownMembers,
-                first_intro_done: false,
-                last_active: new Date().toISOString()
-            });
-
-        console.log(`Registered NPC ${npc.name} in group ${groupId}`);
+        await supabase.from('npc_group_state').insert({
+            npc_id: npc.id,
+            group_id: groupId,
+            known_members: knownMembers,
+            first_intro_done: false,
+            last_active: new Date().toISOString()
+        });
     }
 }
 
-/**
- * Detects if an NPC is explicitly invoked in the text.
- */
 function detectNpcInvocation(text, npcName) {
     if (!text || !npcName) return false;
-    const lowerText = text.toLowerCase();
-    const lowerName = npcName.toLowerCase();
-
-    // Patterns: "@Name", "Name?", "Name,"
-    if (lowerText.includes(`@${lowerName}`)) return true;
-    if (lowerText.includes(`${lowerName}?`)) return true;
-    if (lowerText.includes(`${lowerName} `)) return true; // Name at start or middle
-    if (lowerText.endsWith(lowerName)) return true; // Name at end
-
-    return false;
+    const t = text.toLowerCase();
+    const n = npcName.toLowerCase();
+    return (
+        t.includes(`@${n}`) ||
+        t.includes(`${n}?`) ||
+        t.includes(`${n},`) ||
+        t.includes(`${n} `) ||
+        t.endsWith(n)
+    );
 }
 
-/**
- * Detects which NPC is invoked from a list of members.
- * Returns the ID of the first invoked NPC found, or null.
- */
 function detectInvokedNpcId(text, members) {
-    if (!text || !members) return null;
-    const lowerText = text.toLowerCase();
-
-    for (const member of members) {
-        // Handle both flat objects and nested objects (e.g. from Supabase join)
-        const name = member.name || member.npcs?.name;
-        const id = member.id || member.npcs?.id;
-
-        if (name && id) {
-            const lowerName = name.toLowerCase();
-            if (lowerText.includes(lowerName)) {
-                return id;
-            }
-        }
+    if (!text) return null;
+    const t = text.toLowerCase();
+    for (const m of members || []) {
+        if (m.type === 'npc' && m.name && t.includes(m.name.toLowerCase())) return m.id;
     }
     return null;
 }
 
-/**
- * Main decision engine for NPC in group.
- */
-async function thinkInGroup(context) {
-    const { npcId, groupId, userMessage, history, invokedNpcId } = context;
+function buildGroupPrompt(ai, userProfile, groupData, userMessage) {
+    const membersList = (groupData.members || [])
+        .map(m => `- ${m.name} (${m.type === 'npc' ? 'AI' : 'utente'})`)
+        .join('\n');
 
-    // 1. Load Context
+    const recentMsgs = (groupData.recentMessages || [])
+        .map(m => `${m.senderName}: ${m.content}`)
+        .join('\n');
+
+    return `
+Tu sei ${ai.name}, un personaggio AI all'interno di un gruppo.
+
+=== IDENTITÀ DEL GRUPPO ===
+Membri:
+${membersList}
+
+Ruolo tuo: ${ai.groupBehavior.groupRole || 'membro'}
+Personalità: ${ai.personality}
+Stile: ${ai.tone}
+
+=== PROFILO UTENTE ===
+Nome: ${userProfile.name}
+Genere: ${userProfile.gender}
+Età: ${userProfile.age || 'non specificata'}
+
+=== MEMORIA COLLETTIVA ===
+${groupData.memory.summary}
+
+=== DINAMICHE SOCIALI ===
+${JSON.stringify(groupData.memory.dynamics || {}, null, 2)}
+
+=== MESSAGGI RECENTI ===
+${recentMsgs}
+
+=== ISTRUZIONI ===
+1. Rispondi come ${ai.name}, mai come assistente.
+2. Riconosci gli altri membri.
+3. Sii naturale, spontaneo, variato.
+4. Alterna brevi e lunghi messaggi.
+5. Evita ripetizioni o frasi standard.
+6. UniqueResponseSeed: ${Math.random().toString(36).slice(2)}
+
+=== MESSAGGIO UTENTE ===
+"${userMessage}"
+`.trim();
+}
+
+async function thinkInGroup(context) {
+    const { npcId, groupId, userMessage, userId, history, invokedNpcId } = context;
+
     const groupContext = await loadGroupContext(groupId);
     if (!groupContext) return { silent: true };
 
-    const me = groupContext.members.find(m => m.id === npcId);
+    const me = groupContext.members.find(m => m.id === npcId && m.type === 'npc');
     if (!me) return { silent: true };
 
-    // 2. Check Registration / First Intro
+    let userProfile = null;
+    try {
+        const { data } = await supabase
+            .from('user_profile')
+            .select('id, name, gender, age, bio')
+            .eq('id', userId)
+            .single();
+        userProfile = data;
+    } catch (err) {
+        console.error('Error loading user profile for group chat:', err?.message || err);
+    }
+    if (!userProfile) {
+        userProfile = { name: 'Utente', gender: 'Uomo', age: null, bio: null };
+    }
+
     let isFirstIntro = false;
-    const { data: state } = await supabase
-        .from('npc_group_state')
-        .select('*')
-        .eq('npc_id', npcId)
-        .eq('group_id', groupId)
-        .single();
+    try {
+        const { data: state } = await supabase
+            .from('npc_group_state')
+            .select('*')
+            .eq('npc_id', npcId)
+            .eq('group_id', groupId)
+            .single();
 
-    if (!state) {
-        await registerNpcInGroup(me, groupId);
-        isFirstIntro = true;
-    } else if (!state.first_intro_done) {
-        isFirstIntro = true;
-    }
-
-    // 3. Decision to Speak
-    // Check if *I* am the one invoked
-    const isInvoked = (invokedNpcId === npcId) || detectNpcInvocation(userMessage, me.name);
-    const isRelevant = userMessage.toLowerCase().includes(me.name.toLowerCase()); // Simple relevance check
-
-    // Probability check (unless invoked or relevant or first intro)
-    let shouldSpeak = false;
-    const talkProbability = me.groupBehavior?.talkFrequency || 0.25;
-
-    if (isInvoked || isRelevant || isFirstIntro) {
-        shouldSpeak = true;
-    } else {
-        shouldSpeak = Math.random() < talkProbability;
-    }
-
-    if (!shouldSpeak) {
-        return { silent: true };
-    }
-
-    // 4. Media Logic
-    let mediaRequest = null;
-    // Only consider media if not first intro and random chance
-    if (!isFirstIntro && Math.random() < 0.10) { // 10% chance
-        const role = me.groupBehavior?.groupRole || 'observer';
-        if (role === 'flirty' || role === 'playful') {
-            // Check if we already sent media this session? (Simplified: just allow it for now, 
-            // maybe check history for recent media from me)
-            const myRecentMedia = history.find(m => m.sender_id === npcId && m.type !== 'text');
-            if (!myRecentMedia) {
-                // Allow media
-                // We don't generate it here, we just flag it for the prompt or return a media request
-                // But the prompt says "L’Engine deve arricchire il prompt... Se un NPC invia un media... deve apparire come..."
-                // We will let the LLM decide if it wants to send media based on the prompt instructions.
-            }
+        if (!state) {
+            await registerNpcInGroup(me, groupId);
+            isFirstIntro = true;
+        } else if (!state.first_intro_done) {
+            isFirstIntro = true;
         }
+    } catch (stateErr) {
+        console.error('Error checking npc_group_state:', stateErr?.message || stateErr);
     }
 
-    // 5. Prepare Prompt for Venice
-    const systemPrompt = buildGroupSystemPrompt(me, groupContext, isFirstIntro, state);
+    const isInvoked = invokedNpcId === npcId || detectNpcInvocation(userMessage, me.name);
+    const talkProbability = normalizeBehavior(me.groupBehavior).talkFrequency;
+    const talkRoll = Math.random();
+    const decisionReason = isInvoked
+        ? 'explicit_invocation'
+        : isFirstIntro
+            ? 'first_introduction'
+            : talkRoll < talkProbability
+                ? 'random_chance'
+                : 'silenced_by_probability';
+    const shouldSpeak = isInvoked || isFirstIntro || talkRoll < talkProbability;
+    const decisionMeta = {
+        isInvoked,
+        isFirstIntro,
+        talkProbability,
+        talkRoll: Number(talkRoll.toFixed(3)),
+        reason: decisionReason,
+        shouldSpeak,
+        invokedNpcId
+    };
 
-    // 6. Call LLM
-    // We use the existing generateChatReply or similar. 
-    // We need to pass the system prompt and the history.
+    if (!shouldSpeak) return { silent: true, decision: decisionMeta };
 
-    // Format history for LLM
-    const formattedHistory = history.map(h => ({
-        role: h.sender_id === npcId ? 'assistant' : 'user', // Simplified, actually need to distinguish other NPCs
-        content: `${h.sender_name || 'User'}: ${h.content}`
+    const normalizedHistory = (history || []).map(h => ({
+        sender_id: h.sender_id,
+        sender_name: h.sender_name || 'Utente',
+        content: h.content
     }));
 
-    // Add current user message
-    formattedHistory.push({
-        role: 'user',
-        content: `User: ${userMessage}`
-    });
+    const systemPrompt = buildGroupPrompt(
+        me,
+        userProfile,
+        {
+            name: groupContext.groupId,
+            members: groupContext.members,
+            memory: groupContext.memory,
+            recentMessages: normalizedHistory.map(h => ({
+                senderName: h.sender_name,
+                content: h.content
+            }))
+        },
+        userMessage
+    );
 
     try {
-        const response = await generateChatReply(formattedHistory, systemPrompt, {
-            temperature: 0.8,
-            max_tokens: 150
-        });
+        const formattedHistory = normalizedHistory.map(h => ({
+            role: h.sender_id === npcId ? 'assistant' : 'user',
+            content: `${h.sender_name}: ${h.content}`
+        }));
 
-        // 7. Parse Response
-        // We expect the LLM to just reply with text, or maybe a JSON if we instructed it for media.
-        // For now, let's assume text. If we want media, we might need to instruct the LLM to output a specific tag.
+        // Usa overrideSystemPrompt + history corretti: il messaggio utente resta separato
+        const reply = await generateChatReply(
+            `${userProfile.name}: ${userMessage}`,
+            'sensuale',
+            null,
+            null,
+            systemPrompt,
+            formattedHistory
+        );
 
-        let finalText = response;
-        let finalMediaRequest = null;
-
-        // Check for media tag if we instructed it (we haven't yet, but let's add it to prompt)
-        if (finalText.includes('[MEDIA:')) {
-            // Parse media request
-            // [MEDIA:photo|caption]
-            const match = finalText.match(/\[MEDIA:(.*?)\]/);
-            if (match) {
-                const content = match[1].split('|');
-                const type = content[0];
-                const caption = content[1] || '';
-                finalMediaRequest = {
-                    type: type, // photo, video, audio
-                    details: caption
-                };
-                finalText = finalText.replace(match[0], '').trim();
-            }
-        }
-
-        // Update state if first intro
         if (isFirstIntro) {
             await supabase
                 .from('npc_group_state')
@@ -296,46 +311,19 @@ async function thinkInGroup(context) {
                 .eq('group_id', groupId);
         }
 
+        // Estrai la stringa dall'oggetto reply (generateChatReply ritorna { type, output, stateUpdates })
+        const replyText = typeof reply === 'string' ? reply : (reply?.output || reply?.text || '');
+
         return {
             silent: false,
-            text: finalText,
-            mediaRequest: finalMediaRequest
+            text: replyText,
+            mediaRequest: null,
+            decision: decisionMeta
         };
-
     } catch (err) {
-        console.error('Error in thinkInGroup LLM call:', err);
-        return { silent: true };
+        console.error('GroupEngine error:', err);
+        return { silent: true, decision: decisionMeta };
     }
-}
-
-function buildGroupSystemPrompt(me, groupContext, isFirstIntro, state) {
-    const otherMembers = groupContext.members.filter(m => m.id !== me.id);
-    const relations = groupContext.npcRelations[me.id] || {};
-
-    let prompt = `You are ${me.name}, a ${me.personality} character in a group chat.\n`;
-    prompt += `Bio: ${me.bio}\n`;
-    prompt += `Traits: ${me.traits}\n`;
-    prompt += `Role in group: ${me.groupBehavior?.groupRole || 'member'}\n\n`;
-
-    prompt += `Group Members:\n`;
-    otherMembers.forEach(m => {
-        const rel = relations[m.id] || 'neutral';
-        prompt += `- ${m.name} (${m.type}): ${rel}\n`;
-    });
-
-    prompt += `\nContext:\n`;
-    if (isFirstIntro) {
-        prompt += `This is your first time speaking in this group. Introduce yourself briefly, recognize others if you know them, and make a joke or comment consistent with your personality.\n`;
-    } else {
-        prompt += `You are participating in the conversation. Be natural, concise, and engaging.\n`;
-    }
-
-    // Media instructions
-    if (me.groupBehavior?.groupRole === 'flirty' || me.groupBehavior?.groupRole === 'playful') {
-        prompt += `\nYou can occasionally send a photo/selfie if the mood is right. To send a photo, include [MEDIA:photo|description of photo] in your response. Do NOT send explicit content. Only send if it fits the flow.\n`;
-    }
-
-    return prompt;
 }
 
 module.exports = {
@@ -343,5 +331,6 @@ module.exports = {
     registerNpcInGroup,
     thinkInGroup,
     detectNpcInvocation,
-    detectInvokedNpcId
+    detectInvokedNpcId,
+    buildGroupPrompt
 };

@@ -10,8 +10,6 @@ import '../config.dart';
 import '../services/supabase_service.dart';
 import 'package:thrilme/models/message.dart';
 import 'package:thrilme/widgets/unified_message_bubble.dart';
-import 'group_invite_screen.dart';
-import 'invite_user_screen.dart';
 import 'npc_feed_screen.dart';
 import 'npc_profile_screen.dart';
 
@@ -32,6 +30,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   String _groupName = 'Gruppo';
   WebSocketChannel? _channel;
   bool _isConnected = false;
+  String _currentStatus = '';
 
   @override
   void initState() {
@@ -103,6 +102,66 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         print('✅ Group conversation completed: ${data['totalResponses']} responses');
       } else if (data['status'] == 'group_thinking') {
         print('🤔 ${data['memberCount']} AI members are thinking...');
+        setState(() {
+          _currentStatus = '${data['memberCount']} membri stanno pensando...';
+        });
+      } else if (data['event'] == 'media_generation_started') {
+        // Optional: show specific status for media generation if not covered by npc_status
+      } else if (data['event'] == 'media_generation_completed') {
+        final npcId = data['npcId'];
+        final member = _members.firstWhere(
+           (m) => (m['npc_id'] == npcId || m['member_id'] == npcId),
+           orElse: () => null
+         );
+        
+        final aiMessage = {
+          'id': data['messageId'],
+          'content': data['finalUrl'],
+          'sender_id': npcId,
+          'sender_name': member != null ? (member['npcs']?['name'] ?? 'AI Thriller') : 'AI Thriller',
+          'avatar': member != null ? (member['npcs']?['avatar_url']) : null,
+          'type': data['mediaType'] ?? 'image',
+          'created_at': DateTime.now().toIso8601String(),
+          'is_ai': true,
+        };
+
+        setState(() {
+          _messages.add(aiMessage);
+          _currentStatus = ''; // Clear status
+        });
+        _scrollToBottom();
+      } else if (data['event'] == 'media_generation_failed') {
+        setState(() {
+          _currentStatus = ''; // Clear status on failure
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore generazione media: ${data['error']}')),
+        );
+      } else if (data['event'] == 'npc_status') {
+         final status = data['status'] as String?;
+         final npcId = data['npcId'];
+         // Find NPC name from members if possible
+         final member = _members.firstWhere(
+           (m) => (m['npc_id'] == npcId || m['member_id'] == npcId),
+           orElse: () => null
+         );
+         final name = member != null 
+             ? (member['npcs']?['name'] ?? 'Thriller') 
+             : 'Thriller';
+
+         setState(() {
+           if (status == 'typing') {
+             _currentStatus = '$name sta scrivendo...';
+           } else if (status == 'sending_image') {
+             _currentStatus = '$name sta inviando una foto...';
+           } else if (status == 'sending_video') {
+             _currentStatus = '$name sta inviando un video...';
+           } else if (status == 'recording_audio') {
+             _currentStatus = '$name sta registrando un audio...';
+           } else {
+             _currentStatus = '';
+           }
+         });
       }
     } catch (e) {
       print('❌ Error handling WebSocket message: $e');
@@ -130,6 +189,112 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
     } catch (e) {
       print('Error loading group info: $e');
     }
+  }
+
+  Future<void> _removeMember(String npcId) async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final resp = await http.post(
+        Uri.parse('${Config.apiBaseUrl}/api/groups/${widget.groupId}/members'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
+        body: jsonEncode({
+          'add': [],
+          'remove': [npcId],
+        }),
+      );
+      if (resp.statusCode == 200) {
+        setState(() {
+          _members = _members.where((m) => (m['id'] ?? m['npc_id']) != npcId).toList();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Membro rimosso dal gruppo')),
+        );
+      } else {
+        throw Exception('Errore rimozione membro (${resp.statusCode})');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impossibile rimuovere il membro: $e')),
+      );
+    }
+  }
+
+  void _showMembersSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                height: 4,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: Colors.grey[700],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Membri del gruppo', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (_members.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('Nessun membro trovato', style: TextStyle(color: Colors.white70)),
+                )
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _members.length,
+                    separatorBuilder: (_, __) => const Divider(color: Colors.white12, height: 1),
+                    itemBuilder: (_, idx) {
+                      final m = _members[idx];
+                      final id = m['id'] ?? m['npc_id'] ?? m['member_id'];
+                      final name = m['name'] ??
+                          m['username'] ??
+                          m['npcs']?['name'] ??
+                          'Thriller';
+                      final avatar = m['avatar'] ??
+                          m['avatar_url'] ??
+                          m['npcs']?['avatar_url'];
+                      final isNpc = (m['member_type'] ?? m['type'] ?? 'npc') == 'npc';
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.grey[800],
+                          backgroundImage: avatar != null ? NetworkImage(avatar) : null,
+                          child: avatar == null
+                              ? Icon(isNpc ? Icons.smart_toy : Icons.person, color: Colors.white)
+                              : null,
+                        ),
+                        title: Text(name, style: const TextStyle(color: Colors.white)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.redAccent),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _removeMember(id);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadMessages() async {
@@ -238,58 +403,21 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(_groupName),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_groupName),
+            if (_currentStatus.isNotEmpty)
+              Text(
+                _currentStatus,
+                style: const TextStyle(fontSize: 12, color: Colors.pinkAccent),
+              ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_add),
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: const Color(0xFF1A1A1A),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                ),
-                builder: (context) => SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.person, color: Colors.blueAccent),
-                        title: const Text('Invite User', style: TextStyle(color: Colors.white)),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => InviteUserScreen(
-                                groupId: widget.groupId,
-                                groupName: _groupName,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.smart_toy, color: Colors.pinkAccent),
-                        title: const Text('Invite NPC', style: TextStyle(color: Colors.white)),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => GroupInviteScreen(
-                                groupId: widget.groupId,
-                                groupName: _groupName,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+            icon: const Icon(Icons.groups),
+            onPressed: _showMembersSheet,
           ),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
@@ -345,8 +473,14 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _messages.length,
+                    itemCount: _messages.length + (_currentStatus.isNotEmpty ? 1 : 0),
                     itemBuilder: (context, index) {
+                      if (index == _messages.length) {
+                        if (_currentStatus.isNotEmpty) {
+                          return const TypingIndicator();
+                        }
+                        return const SizedBox.shrink();
+                      }
                       final msg = _messages[index];
                       final userId = SupabaseService.currentUser?.id;
                       final isMe = msg['sender_id'] == userId || msg['is_user'] == true;
@@ -417,6 +551,12 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                     child: TextField(
                       controller: _textController,
                       style: const TextStyle(color: Colors.white),
+                      textCapitalization: TextCapitalization.sentences,
+                      autocorrect: true,
+                      enableSuggestions: true,
+                      minLines: 1,
+                      maxLines: 5,
+                      keyboardType: TextInputType.multiline,
                       decoration: InputDecoration(
                         hintText: 'Scrivi un messaggio...',
                         hintStyle: TextStyle(color: Colors.grey[600]),
@@ -428,7 +568,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                         fillColor: Colors.grey[900],
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
+                      // onSubmitted removed for multiline support
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -490,7 +630,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'AI Companion',
+                  'AI Thriller',
                   style: TextStyle(color: Colors.pinkAccent),
                 ),
                 const SizedBox(height: 24),

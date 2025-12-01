@@ -291,24 +291,50 @@ router.get('/groups/:id/members', async (req, res) => {
         }
         if (!allowed) return res.status(403).json({ error: 'Access denied' });
 
-        // Get member npc IDs
+        // Recupera membri e arricchisci con dati NPC/User senza dipendere da FK
         const { data: memberRows, error: memRowsErr } = await supabase
             .from('group_members')
-            .select('npc_id')
+            .select('member_id, member_type, npc_id, role')
             .eq('group_id', id);
         if (memRowsErr) throw memRowsErr;
-        const gfIds = memberRows.map(r => r.npc_id);
 
-        // Fetch npc details (id, name)
-        let members = [];
-        if (gfIds.length) {
-            const { data: gfData, error: gfErr } = await supabase
-                .from('npcs')
-                .select('id, name')
-                .in('id', gfIds);
-            if (gfErr) throw gfErr;
-            members = gfData;
-        }
+        const npcIds = [];
+        const userIds = [];
+        (memberRows || []).forEach(r => {
+            if (r.member_type === 'npc' || r.member_type === 'ai') {
+                if (r.npc_id) npcIds.push(r.npc_id);
+                if (r.member_id) npcIds.push(r.member_id);
+            } else if (r.member_type === 'user' && r.member_id) {
+                userIds.push(r.member_id);
+            }
+        });
+
+        const { data: npcData, error: npcErr } = npcIds.length
+            ? await supabase.from('npcs').select('id, name, avatar_url').in('id', npcIds)
+            : { data: [], error: null };
+        if (npcErr) throw npcErr;
+        const npcMap = (npcData || []).reduce((acc, n) => { acc[n.id] = n; return acc; }, {});
+
+        const { data: userData, error: userErr } = userIds.length
+            ? await supabase.from('user_profile').select('id, username, name, avatar_url').in('id', userIds)
+            : { data: [], error: null };
+        if (userErr) throw userErr;
+        const userMap = (userData || []).reduce((acc, u) => { acc[u.id] = u; return acc; }, {});
+
+        const members = (memberRows || []).map(r => {
+            const isNpc = r.member_type === 'npc' || r.member_type === 'ai';
+            const npc = npcMap[r.npc_id] || npcMap[r.member_id] || {};
+            const user = userMap[r.member_id] || {};
+            return {
+                id: isNpc ? (npc.id || r.npc_id || r.member_id) : (user.id || r.member_id),
+                member_type: r.member_type,
+                npc_id: npc.id || r.npc_id || null,
+                member_id: r.member_id,
+                name: isNpc ? (npc.name || 'Thriller') : (user.username || user.name || 'Utente'),
+                avatar_url: isNpc ? (npc.avatar_url || null) : (user.avatar_url || null),
+                npcs: npc
+            };
+        });
 
         res.json({ group: { id: grp.id, name: grp.name }, members });
     } catch (e) {

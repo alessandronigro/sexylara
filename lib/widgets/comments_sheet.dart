@@ -136,20 +136,16 @@ class _CommentsSheetState extends State<CommentsSheet> {
                         itemCount: _comments.length,
                         itemBuilder: (context, index) {
                           final comment = _comments[index];
-                          final user = comment['user'] as Map<String, dynamic>?;
                           final createdAt = DateTime.parse(comment['created_at']);
+                          final displayName = 'Utente';
                           
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundImage: user?['avatar_url'] != null
-                                  ? NetworkImage(user!['avatar_url'])
-                                  : null,
-                              child: user?['avatar_url'] == null
-                                  ? const Icon(Icons.person)
-                                  : null,
+                              backgroundColor: Colors.grey[300],
+                              child: const Icon(Icons.person, color: Colors.black54),
                             ),
                             title: Text(
-                              user?['full_name'] ?? 'Utente sconosciuto',
+                              displayName,
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             subtitle: Column(

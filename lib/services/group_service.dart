@@ -18,7 +18,7 @@ class GroupService {
   String get _base => Config.apiBaseUrl;
 
   Future<List<dynamic>> fetchGroups() async {
-    final resp = await http.get(Uri.parse('$_base/groups'), headers: {'x-user-id': userId});
+    final resp = await http.get(Uri.parse('$_base/api/groups'), headers: {'x-user-id': userId});
     if (resp.statusCode == 200) {
       final data = jsonDecode(resp.body);
       return data['groups'] ?? [];
@@ -28,7 +28,7 @@ class GroupService {
 
   Future<Map<String, dynamic>> createGroup(String name, List<String> memberIds) async {
     final resp = await http.post(
-      Uri.parse('$_base/groups'),
+      Uri.parse('$_base/api/groups'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({'name': name, 'memberIds': memberIds}),
     );
@@ -40,7 +40,7 @@ class GroupService {
 
   Future<List<dynamic>> fetchMessages(String groupId, {int limit = 50, int offset = 0}) async {
     final resp = await http.get(
-      Uri.parse('$_base/groups/$groupId/messages?limit=$limit&offset=$offset'),
+      Uri.parse('$_base/api/groups/$groupId/messages?limit=$limit&offset=$offset'),
       headers: {'x-user-id': userId},
     );
     if (resp.statusCode == 200) {
@@ -52,7 +52,7 @@ class GroupService {
 
   Future<void> sendMessage(String groupId, String senderId, String content, {String type = 'text'}) async {
     final resp = await http.post(
-      Uri.parse('$_base/groups/$groupId/messages'),
+      Uri.parse('$_base/api/groups/$groupId/messages'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({
         'senderId': senderId,
@@ -72,7 +72,7 @@ class GroupService {
     required String receiverId,
   }) async {
     final resp = await http.post(
-      Uri.parse('$_base/group/invite/user'),
+      Uri.parse('$_base/api/group/invite/user'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({
         'groupId': groupId,
@@ -92,7 +92,7 @@ class GroupService {
     required String npcId,
   }) async {
     final resp = await http.post(
-      Uri.parse('$_base/group/invite/npc'),
+      Uri.parse('$_base/api/group/invite/npc'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({
         'groupId': groupId,
@@ -103,7 +103,7 @@ class GroupService {
 
     if (resp.statusCode != 200) {
       final err = jsonDecode(resp.body);
-      throw Exception(err['error'] ?? 'Failed to invite NPC');
+      throw Exception(err['error'] ?? 'Failed to invite Thriller');
     }
     
     return jsonDecode(resp.body); // Returns status and reason
@@ -111,7 +111,7 @@ class GroupService {
 
   Future<void> respondToInvite(String inviteId, bool accept) async {
     final resp = await http.post(
-      Uri.parse('$_base/group/invite/respond'),
+      Uri.parse('$_base/api/group/invite/respond'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({
         'inviteId': inviteId,

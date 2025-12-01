@@ -54,9 +54,17 @@ class SupabaseService {
 
   Future<supabase.AuthResponse> _signInWithGoogleWeb() async {
     // For web, use Supabase's built-in OAuth (opens popup)
+    // Use a clean redirect without the hash router fragment to avoid double-# issues.
+    final redirectUri = Uri(
+      scheme: Uri.base.scheme,
+      host: Uri.base.host,
+      port: Uri.base.hasPort ? Uri.base.port : null,
+      path: '/login', // keep path-based routing; Supabase will append #access_token=...
+    );
+
     final bool success = await client.auth.signInWithOAuth(
       supabase.Provider.google,
-      redirectTo: Uri.base.toString(), // Current URL
+      redirectTo: redirectUri.toString(),
     );
     
     if (!success) {

@@ -27,7 +27,7 @@ class Conversation {
     return Conversation(
       id: json['id'],
       userId: json['user_id'],
-      npcId: json['npc_id'] ?? json['girlfriend_id'] ?? '',
+      npcId: json['npc_id'] ?? json['npc_id'] ?? '',
       npc: json['npcs'] != null
           ? Npc.fromJson(json['npcs'])
           : json['girlfriends'] != null
@@ -64,5 +64,4 @@ class Conversation {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
-
 }

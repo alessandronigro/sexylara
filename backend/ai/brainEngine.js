@@ -6,18 +6,7 @@
  */
 
 const { think } = require('./brain/BrainEngine');
-const MediaIntentEngine = require('./engines/MediaIntentEngine');
-const { detectUserIntent, shouldReplyWithAudio } = require('./engines/UserIntentEngine');
-const { analyzeImage } = require('../services/replicate-image-analyzer');
-const { analyzeAudio } = require('../services/replicate-audio-analyzer');
-const { generate } = require('./generation/LlmClient');
-const PromptBuilder = require('./generation/PromptBuilder');
-const { supabase } = require('../lib/supabase');
-const InputLayer = require('./brain/InputLayer');
-const MemoryLayer = require('./brain/MemoryLayer');
-const PerceptionLayer = require('./brain/PerceptionLayer');
-const { decideMotivation } = require('./brain/MotivationLayer');
-const { buildPersonaState } = require('./brain/PersonaLayer');
+// Media intent e altre euristiche locali disabilitate: BrainEngine ora genera solo testo.
 
 /**
  * Utility per recuperare userId da diversi formati di oggetto utente.
@@ -179,9 +168,10 @@ function postProcessAssistantText(text, language = 'it', npc = {}) {
  * Wrapper principale usato da server-ws.js
  * Mantiene la stessa firma originale, ma delega a think() + post-processing.
  */
-async function generateIntelligentResponse(ai, user, message, group = null, recentMessages = [], _generateChatReply) {
+async function generateIntelligentResponse(ai, user, message, group = null, recentMessages = [], _generateChatReply, options = {}) {
   const userId = resolveUserId(user);
   const language = user?.language || 'it';
+  const forcedMediaType = options.forcedMediaType || null;
 
   const context = {
     npcId: ai.id,
@@ -199,59 +189,10 @@ async function generateIntelligentResponse(ai, user, message, group = null, rece
   // 1) Chiamata al core BrainEngine
   const result = await think(context);
   let finalText = result.text || '';
-  let mediaRequest = result.mediaRequest || null;
+  let mediaRequest = forcedMediaType ? { type: forcedMediaType, details: null } : null;
 
   // 2) Post-processing del testo (anti-monologo, anti-servizievole)
   finalText = postProcessAssistantText(finalText, language, ai);
-
-  // 3) Riconosci intento utente (testo)
-  const userIntent = detectUserIntent(message, finalText, {
-    language,
-    npcName: ai.name,
-    groupMode: !!group
-  });
-
-  // 4) Normalizza mediaRequest proveniente dal core (audio/foto/video)
-  if (mediaRequest && mediaRequest.type) {
-    if (!mediaRequest.details || typeof mediaRequest.details !== 'object') {
-      mediaRequest.details = {};
-    }
-
-    if (!mediaRequest.details.scenePrompt) {
-      if (mediaRequest.details.profilePrompt) {
-        mediaRequest.details.scenePrompt = mediaRequest.details.profilePrompt;
-      } else {
-        mediaRequest.details.scenePrompt = finalText;
-      }
-    }
-    if (!mediaRequest.details.text) {
-      mediaRequest.details.text = finalText;
-    }
-    if (!mediaRequest.details.mood && userIntent && userIntent.mood) {
-      mediaRequest.details.mood = userIntent.mood;
-    }
-    if (!mediaRequest.details.language) {
-      mediaRequest.details.language = language;
-    }
-    if (!mediaRequest.details.style && ai && ai.tone) {
-      mediaRequest.details.style = ai.tone;
-    }
-  }
-
-  // 5) Se il core non ha già deciso un mediaRequest,
-  //    possiamo decidere noi di trasformare la risposta in AUDIO automatico
-  if (!mediaRequest && shouldReplyWithAudio(message, finalText, userIntent, { language })) {
-    mediaRequest = {
-      type: 'audio',
-      details: {
-        // Testo da usare come script per il TTS
-        scenePrompt: finalText,
-        text: finalText,
-        mood: userIntent && userIntent.mood ? userIntent.mood : null,
-        language,
-      }
-    };
-  }
 
   // Ritorna nel formato compatibile con server-ws.js
   return {
@@ -491,7 +432,7 @@ async function generateNpcInitiativeMessage(npcData, user) {
 
   return {
     text: (llmResponse || '').trim(),
-    girlfriendId: npc.id,
+    npcId: npc.id,
   };
 }
 
@@ -501,6 +442,5 @@ module.exports = {
   generateIntelligentResponse,
   processInteraction,
   MediaUnderstandingEngine,
-  MediaIntentEngine,
   generateNpcInitiativeMessage,
 };

@@ -18,7 +18,7 @@ class UserService {
 
   Future<Map<String, dynamic>> fetchUserProfile() async {
     final resp = await http.get(
-      Uri.parse('$_base/users/me'),
+      Uri.parse('$_base/api/users/me'),
       headers: {'x-user-id': userId},
     );
 
@@ -29,8 +29,25 @@ class UserService {
     throw Exception('Failed to load user profile');
   }
 
+  Future<Map<String, dynamic>?> getUserProfileById(String id) async {
+    try {
+      final resp = await http.get(
+        Uri.parse('$_base/api/users/$id/profile'),
+        headers: {'x-user-id': userId},
+      );
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return data['user'];
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   Future<List<dynamic>> fetchPublicUsers({String? query}) async {
-    String url = '$_base/users/public';
+    String url = '$_base/api/users/public';
     if (query != null && query.isNotEmpty) {
       url += '?search=${Uri.encodeComponent(query)}';
     }
@@ -49,7 +66,7 @@ class UserService {
 
   Future<void> updateUserPrivacy(bool isPublic) async {
     final resp = await http.put(
-      Uri.parse('$_base/users/settings/privacy'),
+      Uri.parse('$_base/api/users/settings/privacy'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({'isPublic': isPublic}),
     );
@@ -59,9 +76,41 @@ class UserService {
     }
   }
 
-  Future<void> updateNpcPrivacy(String gfId, bool isPublic) async {
+  Future<void> updateUserProfile({
+    required String displayName,
+    bool? isPublic,
+  }) async {
     final resp = await http.put(
-      Uri.parse('$_base/users/npcs/$gfId/privacy'),
+      Uri.parse('$_base/api/users/settings/profile'),
+      headers: {'Content-Type': 'application/json', 'x-user-id': userId},
+      body: jsonEncode({'displayName': displayName, if (isPublic != null) 'isPublic': isPublic}),
+    );
+
+    if (resp.statusCode != 200) {
+      final data = jsonDecode(resp.body);
+      throw Exception(data['error'] ?? 'Failed to update profile');
+    }
+  }
+
+  Future<String> updateUserAvatar(String base64Image) async {
+    final resp = await http.put(
+      Uri.parse('$_base/api/users/settings/avatar'),
+      headers: {'Content-Type': 'application/json', 'x-user-id': userId},
+      body: jsonEncode({'imageBase64': base64Image}),
+    );
+
+    if (resp.statusCode != 200) {
+      final data = jsonDecode(resp.body);
+      throw Exception(data['error'] ?? 'Failed to update avatar');
+    }
+
+    final data = jsonDecode(resp.body);
+    return data['avatarUrl'];
+  }
+
+  Future<void> updateNpcPrivacy(String npcId, bool isPublic) async {
+    final resp = await http.patch(
+      Uri.parse('$_base/api/npcs/$npcId/privacy'),
       headers: {'Content-Type': 'application/json', 'x-user-id': userId},
       body: jsonEncode({'isPublic': isPublic}),
     );

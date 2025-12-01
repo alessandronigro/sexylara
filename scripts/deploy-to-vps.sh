@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Deploy ThrilMe Backend to VPS
 # Usage: ./scripts/deploy-to-vps.sh
@@ -7,15 +8,19 @@ VPS_HOST="45.85.146.77"
 VPS_USER="root"
 VPS_PASS="*Giuseppe78"
 
+SCRIPT_DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "🚀 Starting deployment to VPS..."
 
 # Check if backend/.env exists
-if [ ! -f "backend/.env" ]; then
+if [ ! -f "$REPO_ROOT/backend/.env" ]; then
   echo "⚠️  WARNING: backend/.env not found! The deployment might fail without secrets."
 fi
 
 echo "📦 Compressing backend folder..."
 # Create tarball excluding node_modules and .git
+cd "$REPO_ROOT"
 tar -czf backend.tar.gz --exclude='node_modules' --exclude='.git' backend
 
 echo "📤 Uploading backend to VPS..."
@@ -24,7 +29,7 @@ if ! command -v sshpass &> /dev/null; then
     exit 1
 fi
 
-sshpass -p "$VPS_PASS" scp backend.tar.gz ${VPS_USER}@${VPS_HOST}:/tmp/
+sshpass -p "$VPS_PASS" scp "$REPO_ROOT/backend.tar.gz" ${VPS_USER}@${VPS_HOST}:/tmp/
 
 echo "🔧 Executing deployment on VPS..."
 sshpass -p "$VPS_PASS" ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
@@ -81,10 +86,9 @@ sshpass -p "$VPS_PASS" ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
 EOF
 
 # Cleanup local tar
-rm backend.tar.gz
+rm "$REPO_ROOT/backend.tar.gz"
 
 echo ""
 echo "✅ Deployment completed successfully!"
-echo "🌐 API: https://sexylara.chat"
-echo "🔌 WebSocket: wss://sexylara.chat"
-
+echo "🌐 API: https://thril.me"
+echo "🔌 WebSocket: wss://thril.me"

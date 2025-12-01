@@ -32,6 +32,49 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
   String _tone = 'flirty';
   bool _generating = false;
 
+  // Label maps (IT) with gendered forms where needed
+  final Map<String, Map<String, String>> _ethnicityLabels = const {
+    'latina': {'f': 'Latina', 'm': 'Latino'},
+    'asian': {'f': 'Asiatica', 'm': 'Asiatico'},
+    'european': {'f': 'Europea', 'm': 'Europeo'},
+    'african': {'f': 'Africana', 'm': 'Africano'},
+    'mixed': {'f': 'Mista', 'm': 'Misto'},
+  };
+  final Map<String, Map<String, String>> _bodyTypeLabels = const {
+    'slim': {'f': 'Snella', 'm': 'Snello'},
+    'curvy': {'f': 'Formosa', 'm': 'Robusto'},
+    'athletic': {'f': 'Atletica', 'm': 'Atletico'},
+    'petite': {'f': 'Minuta', 'm': 'Minuto'},
+    'plus_size': {'f': 'Morbida', 'm': 'Robusta'},
+  };
+  final Map<String, Map<String, String>> _hairLengthLabels = const {
+    'short': {'f': 'Corti', 'm': 'Corti'},
+    'medium': {'f': 'Medi', 'm': 'Medi'},
+    'long': {'f': 'Lunghi', 'm': 'Lunghi'},
+  };
+  final Map<String, Map<String, String>> _hairColorLabels = const {
+    'blonde': {'f': 'Biondi', 'm': 'Biondi'},
+    'brunette': {'f': 'Castani', 'm': 'Castani'},
+    'black': {'f': 'Neri', 'm': 'Neri'},
+    'red': {'f': 'Rossi', 'm': 'Rossi'},
+  };
+  final Map<String, Map<String, String>> _eyeColorLabels = const {
+    'brown': {'f': 'Marroni', 'm': 'Marroni'},
+    'blue': {'f': 'Blu', 'm': 'Blu'},
+    'green': {'f': 'Verdi', 'm': 'Verdi'},
+    'hazel': {'f': 'Nocciola', 'm': 'Nocciola'},
+    'gray': {'f': 'Grigi', 'm': 'Grigi'},
+  };
+  final Map<String, Map<String, String>> _personalityLabels = const {
+    'sweet': {'f': 'Dolce', 'm': 'Dolce'},
+    'sexy': {'f': 'Sensuale', 'm': 'Sensuale'},
+    'shy': {'f': 'Timida', 'm': 'Timido'},
+    'dominant': {'f': 'Dominante', 'm': 'Dominante'},
+    'playful': {'f': 'Giocherellona', 'm': 'Giocherellone'},
+    'romantic': {'f': 'Romantica', 'm': 'Romantico'},
+    'mysterious': {'f': 'Misteriosa', 'm': 'Misterioso'},
+  };
+
   void _nextStep() {
     if (_currentStep < 4) {
       _pageController.nextPage(
@@ -57,7 +100,7 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
   Future<void> _createNpc() async {
     if (!mounted) return;
     
-    String loadingMessage = 'Creando companion...';
+    String loadingMessage = 'Creando il tuo Thriller...';
     
     // Show loading dialog
     showDialog(
@@ -354,13 +397,13 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
           _buildDropdown(
             'Etnia',
             _ethnicity,
-            ['latina', 'asian', 'european', 'african', 'mixed'],
+            _resolveLabels(_ethnicityLabels),
             (value) => setState(() => _ethnicity = value),
           ),
           const SizedBox(height: 16),
           _buildChipGroup(
             'Tipo di Corpo',
-            ['slim', 'curvy', 'athletic', 'petite', 'plus_size'],
+            _resolveLabels(_bodyTypeLabels),
             _bodyType,
             (value) => setState(() => _bodyType = value),
           ),
@@ -368,21 +411,21 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
           _buildDropdown(
             'Lunghezza Capelli',
             _hairLength,
-            ['short', 'medium', 'long'],
+            _resolveLabels(_hairLengthLabels),
             (value) => setState(() => _hairLength = value),
           ),
           const SizedBox(height: 16),
           _buildDropdown(
             'Colore Capelli',
             _hairColor,
-            ['blonde', 'brunette', 'black', 'red'],
+            _resolveLabels(_hairColorLabels),
             (value) => setState(() => _hairColor = value),
           ),
           const SizedBox(height: 16),
           _buildDropdown(
             'Colore Occhi',
             _eyeColor,
-            ['brown', 'blue', 'green', 'hazel', 'gray'],
+            _resolveLabels(_eyeColorLabels),
             (value) => setState(() => _eyeColor = value),
           ),
           const SizedBox(height: 24),
@@ -420,7 +463,7 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
           const SizedBox(height: 32),
           _buildChipGroup(
             'Tipo di Personalità',
-            ['sweet', 'sexy', 'shy', 'dominant', 'playful', 'romantic', 'mysterious'],
+            _resolveLabels(_personalityLabels),
             _personalityType,
             (value) => setState(() => _personalityType = value),
           ),
@@ -536,13 +579,16 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
           _buildDetailRow('Nome', _name),
           _buildDetailRow('Sesso', _gender == 'male' ? 'Uomo' : 'Donna'),
           _buildDetailRow('Età', '$_age anni'),
-          if (_ethnicity != null) _buildDetailRow('Etnia', _ethnicity!),
-          if (_bodyType != null) _buildDetailRow('Corpo', _bodyType!),
+          if (_ethnicity != null) _buildDetailRow('Etnia', _resolveLabels(_ethnicityLabels)[_ethnicity!] ?? _ethnicity!),
+          if (_bodyType != null) _buildDetailRow('Corpo', _resolveLabels(_bodyTypeLabels)[_bodyType!] ?? _bodyType!),
           if (_hairLength != null && _hairColor != null)
-            _buildDetailRow('Capelli', '$_hairLength $_hairColor'),
-          if (_eyeColor != null) _buildDetailRow('Occhi', _eyeColor!),
+            _buildDetailRow(
+                'Capelli',
+                '${_resolveLabels(_hairLengthLabels)[_hairLength!] ?? _hairLength} ${_resolveLabels(_hairColorLabels)[_hairColor!] ?? _hairColor}'),
+          if (_eyeColor != null) _buildDetailRow('Occhi', _resolveLabels(_eyeColorLabels)[_eyeColor!] ?? _eyeColor!),
           _buildDetailRow('Altezza', '$_heightCm cm'),
-          if (_personalityType != null) _buildDetailRow('Personalità', _personalityType!),
+          if (_personalityType != null)
+            _buildDetailRow('Personalità', _resolveLabels(_personalityLabels)[_personalityType!] ?? _personalityType!),
           _buildDetailRow('Tono', _getToneName(_tone)),
         ],
       ),
@@ -571,7 +617,7 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
   Widget _buildDropdown(
     String label,
     String? value,
-    List<String> items,
+    Map<String, String> options,
     Function(String?) onChanged,
   ) {
     return Column(
@@ -594,10 +640,10 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
               borderSide: BorderSide.none,
             ),
           ),
-          items: items.map((item) {
+          items: options.entries.map((entry) {
             return DropdownMenuItem(
-              value: item,
-              child: Text(item),
+              value: entry.key,
+              child: Text(entry.value),
             );
           }).toList(),
           onChanged: onChanged,
@@ -608,7 +654,7 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
 
   Widget _buildChipGroup(
     String label,
-    List<String> options,
+    Map<String, String> options,
     String? selected,
     Function(String) onSelected,
   ) {
@@ -623,12 +669,14 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: options.map((option) {
-            final isSelected = selected == option;
+          children: options.entries.map((entry) {
+            final code = entry.key;
+            final text = entry.value;
+            final isSelected = selected == code;
             return ChoiceChip(
-              label: Text(option),
+              label: Text(text),
               selected: isSelected,
-              onSelected: (selected) => onSelected(option),
+              onSelected: (selected) => onSelected(code),
               selectedColor: Colors.pinkAccent,
               backgroundColor: Colors.grey[900],
               labelStyle: TextStyle(
@@ -679,7 +727,7 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                child: Text(_currentStep == 4 ? 'Crea Companion' : 'Avanti'),
+                child: Text(_currentStep == 4 ? 'Crea Thriller' : 'Avanti'),
               ),
             ),
           ],
@@ -689,18 +737,24 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
   }
 
   String _getToneName(String tone) {
+    final isMale = _gender == 'male';
     switch (tone) {
       case 'friendly':
         return 'Amichevole';
       case 'flirty':
-        return 'Civettuola';
+        return isMale ? 'Civettuolo' : 'Civettuola';
       case 'romantic':
-        return 'Romantica';
+        return isMale ? 'Romantico' : 'Romantica';
       case 'explicit':
         return 'Esplicita';
       default:
         return tone;
     }
+  }
+
+  Map<String, String> _resolveLabels(Map<String, Map<String, String>> source) {
+    final isMale = _gender == 'male';
+    return source.map((key, val) => MapEntry(key, isMale ? (val['m'] ?? val['f'] ?? key) : (val['f'] ?? val['m'] ?? key)));
   }
 
   @override
@@ -729,17 +783,17 @@ class _AvatarGenerationDialogState extends State<_AvatarGenerationDialog> {
     {
       'icon': '🎨',
       'title': 'Immagini Personalizzate',
-      'description': 'Genera foto uniche del tuo companion in qualsiasi momento'
+      'description': 'Genera foto uniche del tuo Thriller in qualsiasi momento'
     },
     {
       'icon': '👥',
       'title': 'Chat di Gruppo',
-      'description': 'Crea gruppi con più companion per conversazioni dinamiche'
+      'description': 'Crea gruppi con più Thrillers per conversazioni dinamiche'
     },
     {
       'icon': '🎭',
       'title': 'Personalizzazione Totale',
-      'description': 'Crea companion unici con personalità e aspetto su misura'
+      'description': 'Crea Thrillers unici con personalità e aspetto su misura'
     },
     {
       'icon': '🌍',
@@ -788,7 +842,7 @@ class _AvatarGenerationDialogState extends State<_AvatarGenerationDialog> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Creando il tuo companion...',
+                  'Creando il tuo Thriller...',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,

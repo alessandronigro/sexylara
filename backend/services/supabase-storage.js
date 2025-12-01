@@ -97,8 +97,8 @@ class SupabaseStorageService {
     /**
      * Upload avatar girlfriend
      */
-    async uploadAvatar(buffer, girlfriendId) {
-        const filename = `girlfriend_${girlfriendId}_${Date.now()}.png`;
+    async uploadAvatar(buffer, npcId) {
+        const filename = `npc_${npcId}_${Date.now()}.png`;
         return this.uploadFile(this.buckets.avatars, buffer, {
             filename,
             contentType: 'image/png'
@@ -108,8 +108,8 @@ class SupabaseStorageService {
     /**
      * Upload immagine chat
      */
-    async uploadChatImage(buffer, userId, girlfriendId) {
-        const filename = `${userId}/${girlfriendId}/${uuidv4()}.png`;
+    async uploadChatImage(buffer, userId, npcId) {
+        const filename = `${userId}/${npcId}/${uuidv4()}.png`;
         return this.uploadFile(this.buckets.chatImages, buffer, {
             filename,
             contentType: 'image/png'
@@ -184,7 +184,7 @@ class SupabaseStorageService {
     /**
      * Elimina tutti i file di un npc
      */
-    async deleteNpcFiles(girlfriendId) {
+    async deleteNpcFiles(npcId) {
         const results = {
             avatar: false,
             voiceMaster: false,
@@ -195,7 +195,7 @@ class SupabaseStorageService {
             // Elimina avatar
             const { data: avatarFiles } = await supabase.storage
                 .from(this.buckets.avatars)
-                .list('', { search: `npc_${girlfriendId}` });
+                .list('', { search: `npc_${npcId}` });
 
             if (avatarFiles && avatarFiles.length > 0) {
                 await this.deleteFile(this.buckets.avatars, avatarFiles[0].name);
@@ -205,7 +205,7 @@ class SupabaseStorageService {
             // Elimina voice master
             const { data: voiceFiles } = await supabase.storage
                 .from(this.buckets.voiceMasters)
-                .list('', { search: `npc_${girlfriendId}` });
+                .list('', { search: `npc_${npcId}` });
 
             if (voiceFiles && voiceFiles.length > 0) {
                 await this.deleteFile(this.buckets.voiceMasters, voiceFiles[0].name);

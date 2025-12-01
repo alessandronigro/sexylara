@@ -5,16 +5,17 @@ const { generateCouplePhoto } = require('../ai/media/generateCouplePhoto');
 const { v4: uuidv4 } = require('uuid');
 
 router.post('/couple-photo', async (req, res) => {
-  const { userId, girlfriendId, userImageUrl, npcImageUrl } = req.body || {};
-  if (!userId || !girlfriendId || !userImageUrl || !npcImageUrl) {
-    return res.status(400).json({ error: 'Missing userId, girlfriendId, userImageUrl or npcImageUrl' });
+  const { userId, npcId: bodyNpcId, userImageUrl, npcImageUrl } = req.body || {};
+  const npcId = bodyNpcId || req.body.girlfriendId;
+  if (!userId || !npcId || !userImageUrl || !npcImageUrl) {
+    return res.status(400).json({ error: 'Missing userId, npcId, userImageUrl or npcImageUrl' });
   }
 
   try {
     const { data: npc, error: npcErr } = await supabase
       .from('npcs')
       .select('id, name')
-      .eq('id', girlfriendId)
+      .eq('id', npcId)
       .single();
 
     if (npcErr || !npc) {
@@ -30,7 +31,7 @@ router.post('/couple-photo', async (req, res) => {
     const row = {
       id: uuidv4(),
       user_id: userId,
-      npc_id: girlfriendId,
+      npc_id: npcId,
       media_type: 'couple_photo',
       base_url: baseImageUrl,
       final_url: finalImageUrl,

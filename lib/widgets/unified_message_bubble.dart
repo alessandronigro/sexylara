@@ -329,13 +329,15 @@ class _AudioMessage extends StatefulWidget {
 class _AudioMessageState extends State<_AudioMessage> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
+  bool _isLoading = false;
+  String? _loadedUrl;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    
+
     _audioPlayer.onDurationChanged.listen((duration) {
       if (mounted) setState(() => _duration = duration);
     });
@@ -347,6 +349,36 @@ class _AudioMessageState extends State<_AudioMessage> {
     _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _isPlaying = false);
     });
+
+    _preloadSource();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AudioMessage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _loadedUrl = null;
+      _duration = Duration.zero;
+      _position = Duration.zero;
+      _preloadSource();
+    }
+  }
+
+  Future<void> _preloadSource() async {
+    if (_loadedUrl == widget.url) return;
+    setState(() => _isLoading = true);
+    try {
+      if (widget.url.startsWith('http')) {
+        await _audioPlayer.setSourceUrl(widget.url);
+      } else {
+        await _audioPlayer.setSourceDeviceFile(widget.url);
+      }
+      _loadedUrl = widget.url;
+    } catch (e) {
+      // ignore preload errors; will retry on play
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -363,19 +395,29 @@ class _AudioMessageState extends State<_AudioMessage> {
       child: Row(
         children: [
           IconButton(
-            icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
             color: Colors.white,
             onPressed: () async {
+              if (_isLoading) return;
               if (_isPlaying) {
                 await _audioPlayer.pause();
+                setState(() => _isPlaying = false);
               } else {
-                if (widget.url.startsWith('http')) {
-                  await _audioPlayer.play(UrlSource(widget.url));
-                } else {
-                  await _audioPlayer.play(DeviceFileSource(widget.url));
-                }
+                try {
+                  await _preloadSource();
+                  await _audioPlayer.resume();
+                  setState(() => _isPlaying = true);
+                } catch (_) {}
               }
-              setState(() => _isPlaying = !_isPlaying);
             },
           ),
           Expanded(
@@ -412,7 +454,8 @@ class _AudioMessageState extends State<_AudioMessage> {
 
 // Typing indicator widget
 class TypingIndicator extends StatefulWidget {
-  const TypingIndicator({super.key});
+  final String? avatarUrl;
+  const TypingIndicator({super.key, this.avatarUrl});
 
   @override
   State<TypingIndicator> createState() => _TypingIndicatorState();
@@ -443,6 +486,17 @@ class _TypingIndicatorState extends State<TypingIndicator>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: [
+          if (widget.avatarUrl != null) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.grey[800],
+              backgroundImage: widget.avatarUrl!.startsWith('http')
+                  ? NetworkImage(widget.avatarUrl!)
+                  : null,
+              onBackgroundImageError: (_, __) {},
+            ),
+            const SizedBox(width: 8),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(

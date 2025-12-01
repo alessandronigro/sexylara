@@ -74,7 +74,8 @@ try {
             logToFile(`AI State Save Error: ${JSON.stringify(error)}`);
           } else {
             console.log('✅ AI state saved:', {
-              girlfriendId: girlfriend.id,
+              npcId: girlfriend.id,
+              girlfriendId: girlfriend.id, // legacy
               mood: brainResult.mood,
               xp: stateUpdates.xp,
               level: stateUpdates.level,

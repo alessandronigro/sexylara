@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script per setup AI Brain Engine Database
-# Esegui questo script dopo aver copiato il contenuto di schema.sql
+# Esegui questo script dopo aver copiato il contenuto di ddl.sql
 
 echo "🧠 AI BRAIN ENGINE - Database Setup"
 echo "===================================="
@@ -11,7 +11,7 @@ echo ""
 echo "1. Apri Supabase Dashboard"
 echo "2. Vai su 'SQL Editor'"
 echo "3. Crea una nuova query"
-echo "4. Copia TUTTO il contenuto di backend/ai/schema.sql"
+echo "4. Copia TUTTO il contenuto di supabase/ddl.sql"
 echo "5. Incolla nella query"
 echo "6. Clicca 'Run'"
 echo ""

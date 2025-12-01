@@ -2,43 +2,43 @@ const { supabase } = require('../lib/supabase');
 
 /**
  * In-memory cache for unread counts; optionally persisted to Supabase if table exists.
- * Structure: Map<userId, Map<girlfriendId, count>>
+ * Structure: Map<userId, Map<npcId, count>>
  */
 const unreadCache = new Map();
 
-function getCount(userId, girlfriendId) {
+function getCount(userId, npcId) {
   const userMap = unreadCache.get(userId);
   if (!userMap) return 0;
-  return userMap.get(girlfriendId) || 0;
+  return userMap.get(npcId) || 0;
 }
 
-function setCount(userId, girlfriendId, count) {
+function setCount(userId, npcId, count) {
   let userMap = unreadCache.get(userId);
   if (!userMap) {
     userMap = new Map();
     unreadCache.set(userId, userMap);
   }
-  userMap.set(girlfriendId, count);
+  userMap.set(npcId, count);
 }
 
-function incrementUnread(userId, girlfriendId) {
-  const next = getCount(userId, girlfriendId) + 1;
-  setCount(userId, girlfriendId, next);
+function incrementUnread(userId, npcId) {
+  const next = getCount(userId, npcId) + 1;
+  setCount(userId, npcId, next);
   return next;
 }
 
-function resetUnread(userId, girlfriendId) {
-  setCount(userId, girlfriendId, 0);
+function resetUnread(userId, npcId) {
+  setCount(userId, npcId, 0);
   return 0;
 }
 
-async function persistUnread(userId, girlfriendId) {
+async function persistUnread(userId, npcId) {
   // Optional: if you have a table unread_counts(user_id, npc_id, count)
   try {
-    const count = getCount(userId, girlfriendId);
+    const count = getCount(userId, npcId);
     await supabase
       .from('unread_counts')
-      .upsert({ user_id: userId, npc_id: girlfriendId, count });
+      .upsert({ user_id: userId, npc_id: npcId, count });
   } catch (err) {
     console.warn('⚠️ Persist unread failed:', err?.message);
   }

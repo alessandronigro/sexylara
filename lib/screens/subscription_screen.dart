@@ -2,12 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../models/credit_package.dart';
 import '../providers/session_provider.dart';
 import 'package:http/http.dart' as http;
 
-import '../config.dart';
+import '../config.dart' as app_config;
 
 final _packages = [
   CreditPackage(id: 'base', name: 'Pacchetto Base', credits: 100, price: '€9.99'),
@@ -31,7 +32,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
     setState(() => _loadingPackage = pkg.id);
     try {
-      final url = Uri.parse('${Config.apiBaseUrl}/api/create-checkout-session');
+      final url = Uri.parse('${app_config.Config.apiBaseUrl}/api/create-checkout-session');
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -59,52 +60,89 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Acquista crediti')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 1,
-            childAspectRatio: 3 / 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: Text(
+          'Acquista crediti',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
-          itemCount: _packages.length,
-          itemBuilder: (context, index) {
-            final pkg = _packages[index];
-            final loading = _loadingPackage == pkg.id;
-            return Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(pkg.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text('${pkg.credits} crediti', style: const TextStyle(fontSize: 24, color: Colors.pink)),
-                    const SizedBox(height: 8),
-                    Text(pkg.price, style: const TextStyle(fontSize: 18)),
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: loading ? null : () => _startCheckout(pkg),
-                        child: loading
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : const Text('Acquista ora'),
-                      ),
-                    ),
-                  ],
-                ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1E1E2C), Color(0xFF3A3A5A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 1,
+                childAspectRatio: 3 / 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
               ),
-            );
-          },
+              itemCount: _packages.length,
+              itemBuilder: (context, index) {
+                final pkg = _packages[index];
+                final loading = _loadingPackage == pkg.id;
+                return Card(
+                  elevation: 6,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  color: const Color(0xFF2A2A40),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pkg.name,
+                          style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${pkg.credits} crediti',
+                          style: GoogleFonts.inter(fontSize: 26, color: Colors.pinkAccent),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          pkg.price,
+                          style: GoogleFonts.inter(fontSize: 20, color: Colors.white70),
+                        ),
+                        const Spacer(),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurpleAccent,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: loading ? null : () => _startCheckout(pkg),
+                            child: loading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                  )
+                                : const Text('Acquista ora'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );

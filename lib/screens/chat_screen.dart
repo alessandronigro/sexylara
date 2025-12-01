@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config.dart' as app_config;
 import '../models/message.dart';
@@ -16,7 +17,9 @@ import '../models/pending_media.dart';
 import '../services/chat_service.dart';
 import '../services/npc_service.dart';
 import '../services/conversation_service.dart';
+import '../services/conversation_service.dart';
 import '../services/supabase_service.dart';
+import '../services/user_service.dart';
 import '../widgets/unified_message_bubble.dart';
 import '../widgets/npc_avatar.dart';
 import '../widgets/recording_button.dart';
@@ -43,6 +46,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final Map<String, PendingMedia> _pendingMedia = {};
   StreamSubscription<Message>? _messageSubscription;
   StreamSubscription<String>? _statusSubscription;
+  StreamSubscription<Map<String, dynamic>>? _npcStatusSubscription;
   StreamSubscription<Map<String, String>>? _ackSubscription;
   StreamSubscription<Map<String, dynamic>>? _mediaEventSubscription;
   bool _sending = false;
@@ -54,6 +58,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _audioRecorder = AudioRecorderService();
   bool _isRecording = false;
   String? _pendingStatusMessageId;
+  Timer? _typingStatusTimer;
 
   @override
   void initState() {
@@ -73,6 +78,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _currentStatus = status;
         _handleStatusMessage(status);
       });
+    });
+    _npcStatusSubscription = _chatService.npcStatus.listen((data) {
+      _handleNpcStatus(data);
     });
     _mediaEventSubscription = _chatService.mediaEvents.listen((data) {
       _handleMediaEvent(data);
@@ -94,18 +102,79 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _loadNpc() async {
     try {
-      final gf =
-          await _npcService.getNpcById(widget.npcId);
-      setState(() {
-        _npc = gf;
-      });
-      // Set active chat to prevent notifications for this conversation
-      _chatService.setActiveChat(widget.npcId, gf?.name);
+      // Try loading as NPC
+      var gf = await _npcService.getNpcById(widget.npcId);
+      
+      if (gf == null) {
+        // Try loading as User
+        debugPrint('🔍 Loading user profile for ID: ${widget.npcId}');
+        final userService = ref.read(userServiceProvider);
+        final userProfile = await userService.getUserProfileById(widget.npcId);
+        
+        debugPrint('📦 User profile data: $userProfile');
+        
+        if (userProfile != null) {
+          // Create a dummy NPC object for the UI using fromJson to handle date parsing
+          gf = Npc.fromJson({
+            'id': userProfile['id'],
+            'user_id': userProfile['id'], 
+            'name': userProfile['username'] ?? 'Utente',
+            'avatar_url': userProfile['avatar_url'],
+            'gender': 'female',
+            'is_public': true,
+            'is_active': true,
+            'tone': 'friendly',
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+          debugPrint('✅ Created NPC object: name=${gf.name}, avatar=${gf.avatarUrl}');
+        } else {
+          debugPrint('❌ User profile is null');
+        }
+      } else {
+        debugPrint('✅ Loaded as NPC: name=${gf.name}, avatar=${gf.avatarUrl}');
+      }
+
+      if (gf == null) {
+        // Neither NPC nor User found
+        debugPrint('❌ No NPC or User found with ID: ${widget.npcId}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Thriller non trovato o non più disponibile'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          // Navigate back to home
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/');
+          }
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _npc = gf;
+        });
+        if (gf != null) {
+            _chatService.setActiveChat(widget.npcId, gf.name);
+        }
+      }
     } catch (e) {
+      debugPrint('❌ Error loading NPC/User: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore caricamento npc: $e')),
+          SnackBar(content: Text('Errore caricamento Thriller: $e')),
         );
+        // Navigate back on error
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/');
+        }
       }
     }
   }
@@ -125,42 +194,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _handleStatusMessage(String status) {
-    if (status.isEmpty) {
-      if (_pendingStatusMessageId != null) {
-        setState(() {
-          _messages.removeWhere((m) => m.id == _pendingStatusMessageId);
-          _pendingStatusMessageId = null;
-        });
-      }
-      return;
-    }
+    // Mantieni solo lo stato per header e pallini, senza inserire messaggi fittizi
+    _currentStatus = status;
+  }
 
-    String mediaText;
-    if (status == 'rendering_image') {
-      mediaText = '${_npc?.name ?? 'NPC'} ti sta inviando un\'immagine...';
-    } else if (status == 'rendering_video') {
-      mediaText = '${_npc?.name ?? 'NPC'} ti sta inviando un video...';
-    } else if (status == 'rendering_audio') {
-      mediaText = '${_npc?.name ?? 'NPC'} ti sta inviando un audio...';
-    } else {
-      mediaText = '${_npc?.name ?? 'NPC'} sta scrivendo...';
-    }
+  void _handleNpcStatus(Map<String, dynamic> data) {
+    final npcId = data['npcId']?.toString();
+    if (npcId == null || npcId != widget.npcId) return;
 
-    final msg = Message(
-      id: 'status-${DateTime.now().millisecondsSinceEpoch}',
-      role: 'assistant',
-      type: MessageType.text,
-      content: mediaText,
-      timestamp: DateTime.now(),
-      status: MessageStatus.sending,
-    );
+    final status = data['status']?.toString() ?? '';
+    if (!mounted) return;
 
     setState(() {
-      _messages.removeWhere((m) => m.id.startsWith('status-'));
-      _messages.add(msg);
-      _pendingStatusMessageId = msg.id;
+      if (status == 'idle' || status.isEmpty) {
+        _currentStatus = '';
+      } else {
+        _currentStatus = status;
+      }
     });
-    _scrollToBottom();
   }
 
   @override
@@ -169,8 +220,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _chatService.setActiveChat(null, null);
     _messageSubscription?.cancel();
     _statusSubscription?.cancel();
+    _npcStatusSubscription?.cancel();
     _ackSubscription?.cancel();
     _mediaEventSubscription?.cancel();
+    _typingStatusTimer?.cancel();
     _chatService.dispose();
     _controller.dispose();
     _inputFocusNode.dispose();
@@ -372,6 +425,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ===== AUDIO RECORDING METHODS =====
   
   Future<void> _startRecording() async {
+    // Forza la richiesta permessi prima di iniziare
+    final permissionGranted = await _audioRecorder.requestPermission();
+    if (!permissionGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Permesso microfono necessario per registrare audio.',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.redAccent,
+            action: SnackBarAction(
+              label: 'Impostazioni',
+              textColor: Colors.white,
+              onPressed: openAppSettings,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     final success = await _audioRecorder.startRecording();
     if (success) {
       setState(() {
@@ -538,6 +613,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() => _sending = false);
   }
 
+  void _onTextChanged(String value) {
+    _typingStatusTimer?.cancel();
+    final status = value.trim().isEmpty ? '' : 'typing';
+    if (status.isNotEmpty) {
+      _chatService.sendTypingStatus(widget.npcId, status: status);
+      _typingStatusTimer = Timer(const Duration(seconds: 3), () {
+        _chatService.sendTypingStatus(widget.npcId, status: '');
+      });
+    }
+  }
+
   Future<void> _showPhotoSourceOptions() async {
     if (!mounted) return;
     final source = await showModalBottomSheet<ImageSource>(
@@ -556,13 +642,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               children: [
                 ListTile(
                   leading: const Icon(Icons.photo, color: Colors.pinkAccent),
-                  title: const Text('Libreria'),
+                  title: const Text(
+                    'Libreria',
+                    style: TextStyle(color: Colors.white),
+                  ),
                   onTap: () => Navigator.pop(context, ImageSource.gallery),
                 ),
                 ListTile(
                   leading:
                       const Icon(Icons.camera_alt, color: Colors.pinkAccent),
-                  title: const Text('Fotocamera'),
+                  title: const Text(
+                    'Fotocamera',
+                    style: TextStyle(color: Colors.white),
+                  ),
                   onTap: () => Navigator.pop(context, ImageSource.camera),
                 ),
               ],
@@ -742,14 +834,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 itemCount: items.length,
                 itemBuilder: (_, index) {
+                  final currentUserId = SupabaseService.currentUser?.id;
                   final item = items[index];
                   if (item is String && item == 'status') {
-                    return const TypingIndicator();
+                    return TypingIndicator(avatarUrl: _npc?.avatarUrl);
                   }
                   if (item is PendingMedia) {
                     return PendingMediaBubble(item);
                   }
                   final msg = item as Message;
+                  final isAssistant = msg.role == 'assistant';
+                  final isMine = msg.senderId != null && currentUserId != null
+                      ? msg.senderId == currentUserId
+                      : msg.isUser;
+                  final bubbleAvatar = isMine
+                      ? null
+                      : (msg.avatarUrl ?? _npc?.avatarUrl);
+                  final senderName = isMine
+                      ? null
+                      : (msg.senderName ?? _npc?.name);
                   return GestureDetector(
                     onLongPress: () => _showMessageOptions(msg),
                     child: UnifiedMessageBubble(
@@ -761,11 +864,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               : msg.type == MessageType.video
                                   ? MessageType.video
                                   : msg.type == MessageType.audio
-                                      ? MessageType.audio
-                                      : MessageType.text,
-                      isMe: msg.isUser,
+                          ? MessageType.audio
+                          : MessageType.text,
+                      isMe: isMine,
                       timestamp: msg.timestamp,
                       mediaUrl: msg.type != MessageType.text ? msg.content : null,
+                      avatarUrl: bubbleAvatar,
+                      senderName: senderName,
                     ),
                   );
                 },
@@ -885,11 +990,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             controller: _controller,
                             focusNode: _inputFocusNode,
                             style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Scrivi un messaggio...',
-                              hintStyle: TextStyle(color: Colors.grey[600]),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
+                          decoration: InputDecoration(
+                            hintText: 'Scrivi un messaggio...',
+                            hintStyle: TextStyle(color: Colors.grey[600]),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
                                 borderSide: BorderSide.none,
                               ),
                               filled: true,
@@ -897,6 +1002,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 20, vertical: 10),
                             ),
+                            onChanged: _onTextChanged,
                             onSubmitted: (_) => _sendMessage(),
                           ),
                         ),
@@ -947,14 +1053,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String _getStatusText(String status) {
     switch (status) {
+      case 'typing':
+        return '${_npc?.name ?? 'Thriller'} sta scrivendo...';
+      case 'sending_image':
       case 'rendering_image':
-        return 'Generando immagine...';
+        return '${_npc?.name ?? 'Thriller'} sta inviando un\'immagine...';
+      case 'sending_video':
       case 'rendering_video':
-        return 'Generando video...';
+        return '${_npc?.name ?? 'Thriller'} sta inviando un video...';
+      case 'sending_audio':
       case 'recording_audio':
-        return 'Registrando audio...';
+        return '${_npc?.name ?? 'Thriller'} sta registrando un audio...';
       default:
-        return 'Sta scrivendo...';
+        return '${_npc?.name ?? 'Thriller'} sta scrivendo...';
     }
   }
 }

@@ -82,13 +82,40 @@ router.get('/npc/:npcId', async (req, res) => {
     try {
         const { data: posts, error } = await supabase
             .from('npc_posts')
-            .select('*')
+            .select('id, npc_id, caption, media_url, media_type, created_at')
             .eq('npc_id', npcId)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
 
-        res.json(posts || []);
+        const postIds = (posts || []).map(p => p.id);
+        let likeCounts = {};
+        let commentCounts = {};
+        if (postIds.length > 0) {
+            const { data: likes } = await supabase
+                .from('post_likes')
+                .select('post_id')
+                .in('post_id', postIds);
+            (likes || []).forEach(l => {
+                likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1;
+            });
+
+            const { data: comments } = await supabase
+                .from('post_comments')
+                .select('post_id')
+                .in('post_id', postIds);
+            (comments || []).forEach(c => {
+                commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
+            });
+        }
+
+        const enriched = (posts || []).map(p => ({
+            ...p,
+            like_count: likeCounts[p.id] || 0,
+            comment_count: commentCounts[p.id] || 0
+        }));
+
+        res.json(enriched);
     } catch (err) {
         console.error('❌ Errore recupero feed NPC:', err);
         res.status(500).json({ error: 'Impossibile recuperare il feed' });
@@ -103,18 +130,57 @@ router.get('/public', async (req, res) => {
     const { limit = 50, offset = 0 } = req.query;
 
     try {
-        const { data: posts, error } = await supabase
+        const { data: posts, error: postsError } = await supabase
             .from('npc_posts')
-            .select(`
-        *,
-        npc:girlfriends!npc_posts_npc_id_fkey(id, name, avatar_url, gender)
-      `)
+            .select('id, npc_id, caption, media_url, media_type, created_at')
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
 
-        if (error) throw error;
+        if (postsError) throw postsError;
 
-        res.json(posts || []);
+        const npcIds = Array.from(new Set((posts || []).map(p => p.npc_id).filter(Boolean)));
+        let npcMap = {};
+        if (npcIds.length > 0) {
+            const { data: npcs, error: npcError } = await supabase
+                .from('npcs')
+                .select('id, name, avatar_url, gender')
+                .in('id', npcIds);
+            if (npcError) throw npcError;
+            npcMap = (npcs || []).reduce((acc, n) => {
+                acc[n.id] = n;
+                return acc;
+            }, {});
+        }
+
+        const postIds = (posts || []).map(p => p.id);
+        let likeCounts = {};
+        let commentCounts = {};
+        if (postIds.length > 0) {
+            const { data: likes } = await supabase
+                .from('post_likes')
+                .select('post_id')
+                .in('post_id', postIds);
+            (likes || []).forEach(l => {
+                likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1;
+            });
+
+            const { data: comments } = await supabase
+                .from('post_comments')
+                .select('post_id')
+                .in('post_id', postIds);
+            (comments || []).forEach(c => {
+                commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
+            });
+        }
+
+        const enriched = (posts || []).map(p => ({
+            ...p,
+            npc: npcMap[p.npc_id] || null,
+            like_count: likeCounts[p.id] || 0,
+            comment_count: commentCounts[p.id] || 0
+        }));
+
+        res.json(enriched);
     } catch (err) {
         console.error('❌ Errore recupero feed pubblico:', err);
         res.status(500).json({ error: 'Impossibile recuperare il feed pubblico' });
@@ -145,7 +211,7 @@ async function ensureUserProfileExists(userId) {
             .from('user_profile')
             .insert({
                 id: userId,
-                full_name: 'Utente', // Placeholder
+                name: 'Utente', // Placeholder
                 // Aggiungi altri campi obbligatori se necessario
             });
 
@@ -292,6 +358,11 @@ router.post('/like-post', async (req, res) => {
 
             // Notifica l'utente della rimozione del like
             console.log(`🔔 Notifica: like rimosso da post ${postId} da utente ${userId}`);
+            return res.json({
+                success: true,
+                liked: false,
+                totalLikes: count || 0
+            });
         } else {
             // Aggiungi like
             await supabase
@@ -385,10 +456,7 @@ router.get('/post-comments/:postId', async (req, res) => {
     try {
         const { data: comments, error } = await supabase
             .from('post_comments')
-            .select(`
-                *,
-                user:user_profile(id, full_name, avatar_url)
-            `)
+            .select('id, post_id, user_id, comment, created_at')
             .eq('post_id', postId)
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);

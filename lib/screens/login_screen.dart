@@ -52,7 +52,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _submitGoogle() async {
-    await _handleAuth(() => SupabaseService.instance.signInWithGoogle());
+    await _handleAuth(() async {
+      final response = await SupabaseService.instance.signInWithGoogle();
+      // Save Google avatar to user profile
+      final user = response.user;
+      if (user != null && user.userMetadata?['avatar_url'] != null) {
+        try {
+          await SupabaseService.client.from('user_profile').upsert({
+            'id': user.id,
+            'avatar_url': user.userMetadata!['avatar_url'],
+            'username': user.userMetadata?['full_name'] ?? user.email?.split('@')[0] ?? 'User',
+          });
+        } catch (e) {
+          debugPrint('Error saving Google avatar: $e');
+        }
+      }
+    });
   }
 
   @override
@@ -91,7 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Your personal companion',
+                  'Il tuo Thriller personale',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Colors.white70,
                       ),

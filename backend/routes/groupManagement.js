@@ -12,14 +12,14 @@ router.post('/invite/user', requireGroupPermission('invite_user'), async (req, r
     const { groupId, senderId, receiverId } = req.body;
 
     try {
-        // Crea invito pending
+        // Crea invito pending su group_invites
         const { data, error } = await supabase
-            .from('invites')
+            .from('group_invites')
             .insert({
                 group_id: groupId,
-                sender_id: senderId,
-                receiver_id: receiverId,
-                receiver_type: 'user',
+                invited_by: senderId,
+                invited_id: receiverId,
+                invited_type: 'user',
                 status: 'pending'
             })
             .select()
@@ -51,7 +51,7 @@ router.post('/invite/npc', requireGroupPermission('invite_npc'), async (req, res
         // 1. Recupera dati NPC e Gruppo
         const { data: npc } = await supabase.from('npcs').select('*').eq('id', npcId).single();
         const { data: group } = await supabase.from('groups').select('*').eq('id', groupId).single();
-        const { data: sender } = await supabase.from('users').select('*').eq('id', senderId).single(); // Mock user table
+        const { data: sender } = await supabase.from('user_profile').select('*').eq('id', senderId).single();
         const { data: members } = await supabase.from('group_members').select('*').eq('group_id', groupId);
 
         if (!npc || !group) return res.status(404).json({ error: 'NPC or Group not found' });
@@ -114,9 +114,9 @@ router.post('/invite/respond', async (req, res) => {
     const { inviteId, userId, accept } = req.body;
 
     try {
-        const { data: invite } = await supabase.from('invites').select('*').eq('id', inviteId).single();
+        const { data: invite } = await supabase.from('group_invites').select('*').eq('id', inviteId).single();
 
-        if (!invite || invite.receiver_id !== userId) {
+        if (!invite || invite.invited_id !== userId) {
             return res.status(403).json({ error: 'Invalid invite' });
         }
 
@@ -129,7 +129,7 @@ router.post('/invite/respond', async (req, res) => {
                 role: 'member'
             });
 
-            await supabase.from('invites').update({ status: 'accepted' }).eq('id', inviteId);
+            await supabase.from('group_invites').update({ status: 'accepted' }).eq('id', inviteId);
             // Notify group about new member
             const { data: groupMembers } = await supabase.from('group_members').select('member_id').eq('group_id', invite.group_id);
             const memberIds = groupMembers.map(m => m.member_id);
@@ -140,7 +140,7 @@ router.post('/invite/respond', async (req, res) => {
                 message: `Un nuovo membro è entrato nel gruppo`,
             });
         } else {
-            await supabase.from('invites').update({ status: 'rejected' }).eq('id', inviteId);
+            await supabase.from('group_invites').update({ status: 'declined' }).eq('id', inviteId);
         }
 
         res.json({ success: true });

@@ -13,7 +13,7 @@
 
 Questa repository include documentazione completa e organizzata:
 
-### 🏗️ [ARCHITECTURE.md](./ARCHITECTURE.md)
+### 🏗️ [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 **Architettura completa del sistema**
 - Panoramica stack tecnologico
 - Struttura backend e frontend
@@ -46,6 +46,22 @@ Questa repository include documentazione completa e organizzata:
 - Autenticazione e inviti
 - Database relationships
 - Performance optimization
+
+### 📡 [docs/API.md](./docs/API.md)
+**Documentazione completa delle API**
+- Endpoint REST dettagliati
+- Protocollo WebSocket
+- Esempi di richieste/risposte
+- Gestione errori
+- Codici di stato HTTP
+
+### 👨‍💻 [docs/DEVELOPER_GUIDE.md](./docs/DEVELOPER_GUIDE.md)
+**Guida per sviluppatori**
+- Setup ambiente di sviluppo
+- Convenzioni codice
+- Workflow di sviluppo
+- Testing e debugging
+- Come contribuire al progetto
 
 ---
 
@@ -501,10 +517,14 @@ Questo progetto è sotto licenza MIT - vedi file [LICENSE](LICENSE) per dettagli
 
 Per approfondimenti, consulta:
 
-1. **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Architettura dettagliata
-2. **[TODO.md](./TODO.md)** - Task e miglioramenti
-3. **[CLEANUP.md](./CLEANUP.md)** - Guida cleanup codice
-4. **[SYSTEM_MAP.md](./SYSTEM_MAP.md)** - Diagrammi e flussi
+1. **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Architettura dettagliata del sistema
+2. **[docs/API.md](./docs/API.md)** - Documentazione completa delle API REST e WebSocket
+3. **[docs/DEVELOPER_GUIDE.md](./docs/DEVELOPER_GUIDE.md)** - Guida per sviluppatori
+4. **[docs/backend/DEPLOY.md](./docs/backend/DEPLOY.md)** - Guida deployment backend
+5. **[docs/backend/ai/README.md](./docs/backend/ai/README.md)** - Documentazione sistema AI
+6. **[TODO.md](./TODO.md)** - Task e miglioramenti
+7. **[CLEANUP.md](./CLEANUP.md)** - Guida cleanup codice
+8. **[SYSTEM_MAP.md](./SYSTEM_MAP.md)** - Diagrammi e flussi
 
 ---
 

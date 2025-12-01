@@ -6,24 +6,50 @@ const imageUrlToBase64 = require("../utils/imageToBase64");
 const { writeFile } = require("fs/promises");
 const storageService = require('../services/supabase-storage');
 
-const group_id = 1943287634835017980;
+const FALLBACK_FACE_URL = "https://thril.me/lara-avatar.png";
 
-// Video generation route using MiniMax S2V-01
-const video = async (prompt, girlfriend = null, chatHistory = [], userId = null, girlfriendId = null) => {
+const resolveFaceReference = (npc, overrideUrl = null) => {
+    if (overrideUrl) return overrideUrl;
+    if (!npc) return null;
+    return npc.face_image_url
+        || npc.avatar_url
+        || npc.image_reference
+        || npc.avatar
+        || null;
+};
+
+const fetchFaceAsBase64 = async (url) => {
+    if (!url) return null;
     try {
-        const group_id = 1943287634835017980;
+        // Support data URL already encoded
+        if (url.startsWith('data:')) {
+            const [, data] = url.split(',');
+            return data || null;
+        }
+        return await imageUrlToBase64(url);
+    } catch (err) {
+        console.warn('⚠️ Unable to fetch face reference, falling back:', err?.message);
+        return null;
+    }
+};
 
-        // Use girlfriend's avatar if available, otherwise use default
-        let imageUrl = "https://sexylara.chat/lara-avatar.png";
-        if (girlfriend && girlfriend.avatar_url && girlfriend.avatar_url.startsWith('http')) {
-            imageUrl = girlfriend.avatar_url;
+// Video generation route using MiniMax S2V-01 with NPC face swap
+const video = async (prompt, npc = null, chatHistory = [], userId = null, npcId = null, faceImageUrl = null) => {
+    try {
+        // Use NPC face/ avatar if available, otherwise default
+        const faceRefUrl = resolveFaceReference(npc, faceImageUrl) || FALLBACK_FACE_URL;
+        let imageBase64 = await fetchFaceAsBase64(faceRefUrl);
+        if (!imageBase64) {
+            imageBase64 = await fetchFaceAsBase64(FALLBACK_FACE_URL);
         }
 
-        console.log('🎬 Using avatar for video:', imageUrl);
+        if (!imageBase64) {
+            throw new Error('Unable to load face reference for video generation');
+        }
 
-        const imageBase64 = await imageUrlToBase64(imageUrl);
+        console.log('🎬 Using face reference for video:', faceRefUrl);
 
-        // Generate enhanced prompt using AI
+        // Generate enhanced prompt using AI (placeholder for future prompt engineering)
         const enhancedPrompt = prompt;
 
         const output = await fetch("https://api.minimax.io/v1/video_generation", {
@@ -34,7 +60,7 @@ const video = async (prompt, girlfriend = null, chatHistory = [], userId = null,
             },
             body: JSON.stringify({
                 model: "S2V-01",
-            prompt: enhancedPrompt,
+                prompt: enhancedPrompt,
                 subject_reference: [
                     {
                         type: "character",
@@ -88,12 +114,19 @@ const video = async (prompt, girlfriend = null, chatHistory = [], userId = null,
         const response2 = await fetch(download.file.download_url.toString());
         const buffer = await response2.buffer();
 
-        // Upload to Supabase Storage if userId and girlfriendId are provided
-        if (userId && girlfriendId) {
+        const ownerId = userId || npc?.user_id || npc?.owner_id || npc?.created_by || null;
+
+        // Upload to Supabase Storage if identifiers are provided
+        if (ownerId && npcId) {
             try {
-                const result = await storageService.uploadChatVideo(buffer, userId, girlfriendId);
+                const result = await storageService.uploadChatVideo(buffer, ownerId, npcId);
                 console.log('✅ Video uploaded to Supabase:', result.publicUrl);
-                return result.publicUrl;
+                return {
+                    videoUrl: result.publicUrl,
+                    mediaUrl: result.publicUrl,
+                    storagePath: result.path,
+                    storageBucket: storageService.buckets?.chatVideos || 'chat-videos',
+                };
             } catch (uploadError) {
                 console.error('Error uploading video to Supabase:', uploadError);
                 // Fallback to local storage
@@ -103,7 +136,11 @@ const video = async (prompt, girlfriend = null, chatHistory = [], userId = null,
         // Fallback: save locally
         const filevideo = `${fileId}.mp4`;
         await writeFile("public/" + filevideo, buffer);
-        return filevideo.toString();
+        return {
+            videoUrl: filevideo.toString(),
+            mediaUrl: filevideo.toString(),
+            localPath: filevideo.toString(),
+        };
 
     } catch (error) {
         logToFile(error);

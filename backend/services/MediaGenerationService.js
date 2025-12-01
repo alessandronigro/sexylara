@@ -23,7 +23,7 @@ class MediaGenerationService {
                 throw new Error("missing intent details for photo generation");
             }
 
-            const finalPrompt = intentDetails.scenePrompt;
+            const finalPrompt = this._applyGenderConsistency(intentDetails.scenePrompt, npc);
 
             const result = await generateImage(finalPrompt, npc, null, 'it', {
                 skipEnhance: true,
@@ -54,9 +54,10 @@ class MediaGenerationService {
      * @param {Object} npc - Dati dell'NPC
      * @param {Object} npc - Dati dell'NPC
      * @param {Object} intentDetails - Dettagli dal MediaIntentEngine (scenePrompt)
+     * @param {string|null} userId - ID dell'utente che ha richiesto il video (per storage)
      * @returns {Promise<{url: string, caption: string}>}
      */
-    async generateVideo(npc, intentDetails) {
+    async generateVideo(npc, intentDetails, userId = null) {
         try {
             console.log(`🎥 Generating video for NPC: ${npc.name}`);
 
@@ -65,10 +66,18 @@ class MediaGenerationService {
                 throw new Error('missing intent details for video generation');
             }
 
-            const result = await generateVideo(prompt, npc, [], null, npc.id);
+            const faceRef = this._resolveNpcFace(npc);
+            const result = await generateVideo(prompt, npc, [], userId, npc.id, faceRef);
+            const finalUrl = typeof result === 'string'
+                ? result
+                : (result?.videoUrl || result?.mediaUrl || result?.result);
+
+            if (!finalUrl) {
+                throw new Error('video generation returned empty url');
+            }
 
             return {
-                url: result.videoUrl || result.result,
+                url: finalUrl,
                 caption: this.generateVideoCaption(npc)
             };
         } catch (error) {
@@ -84,7 +93,7 @@ class MediaGenerationService {
      * @param {Object} intentDetails - Dettagli dal MediaIntentEngine (scenePrompt)
      * @returns {Promise<{url: string, caption: string}>}
      */
-    async generateAudio(npc, intentDetails) {
+    async generateAudio(npc, intentDetails, userId = null) {
         try {
             console.log(`🎤 Generating audio for NPC: ${npc.name}`);
 
@@ -97,7 +106,7 @@ class MediaGenerationService {
                 audioText,
                 npc.voice_master_url || null, // prefer cloned master url
                 [],
-                null,
+                userId,
                 npc.id,
                 npc.voice_profile,
                 npc.voice_engine
@@ -105,6 +114,7 @@ class MediaGenerationService {
             const finalUrl = typeof result === 'string'
                 ? result
                 : (result?.mediaUrl || result?.audioUrl || result?.result);
+            console.log('🔊 Audio generation result URL:', finalUrl || 'null');
 
             return {
                 url: finalUrl,
@@ -139,6 +149,49 @@ class MediaGenerationService {
             "Video pronto! Guardalo e dimmi cosa ne pensi 😘"
         ];
         return captions[Math.floor(Math.random() * captions.length)];
+    }
+    /**
+     * Mantiene la coerenza di genere tra NPC e prompt.
+     * Sostituisce termini maschili/femminili se contrastano con l'NPC.
+     */
+    _applyGenderConsistency(prompt, npc) {
+        if (!prompt || !npc || !npc.gender) return prompt;
+
+        const gender = (npc.gender || '').toLowerCase();
+        let updated = prompt;
+
+        const toMale = [
+            { find: /\bwoman\b/gi, repl: 'man' },
+            { find: /\bgirl\b/gi, repl: 'man' },
+            { find: /\bfemale\b/gi, repl: 'male' }
+        ];
+
+        const toFemale = [
+            { find: /\bman\b/gi, repl: 'woman' },
+            { find: /\bguy\b/gi, repl: 'woman' },
+            { find: /\bmale\b/gi, repl: 'female' }
+        ];
+
+        if (gender === 'male' || gender === 'm') {
+            toMale.forEach(rule => {
+                updated = updated.replace(rule.find, rule.repl);
+            });
+        } else if (gender === 'female' || gender === 'f') {
+            toFemale.forEach(rule => {
+                updated = updated.replace(rule.find, rule.repl);
+            });
+        }
+
+        return updated;
+    }
+
+    _resolveNpcFace(npc) {
+        if (!npc) return null;
+        return npc.face_image_url
+            || npc.avatar_url
+            || npc.image_reference
+            || npc.avatar
+            || null;
     }
 }
 

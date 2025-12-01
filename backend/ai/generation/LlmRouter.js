@@ -1,4 +1,4 @@
-const Venice = require("./LlmClient");
+const { veniceSafeCall } = require("./VeniceSafeCall");
 const { sanitizeHistoryForLLM } = require("../../utils/sanitizeHistory");
 
 async function routeLLM(systemPrompt, history, userMessage, npcModel) {
@@ -15,7 +15,12 @@ async function routeLLM(systemPrompt, history, userMessage, npcModel) {
     { role: "user", content: userMessage }
   ];
 
-  return await Venice.generate(messages, npcModel);
+  return await veniceSafeCall("meta/meta-llama-3.1-405b-instruct", {
+    prompt: systemPrompt,
+    messages,
+    temperature: 0.7,
+    max_tokens: 500,
+  });
 }
 
 module.exports = { routeLLM };

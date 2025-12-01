@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./utils/autoInstrument');
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
@@ -10,6 +11,7 @@ const generateChatReply = require("./routes/openRouterService");
 const storageService = require("./services/supabase-storage");
 const { analyzeImage } = require("./services/image-analysis");
 const { generateAvatar } = require("./routes/image");
+const { generateNpcVoiceMaster } = require("./services/voiceGenerator");
 
 const userRoutes = require('./routes/user');
 const paymentsRoutes = require('./routes/payments');
@@ -29,6 +31,7 @@ const npcShareRoutes = require('./routes/npc_share');
 const npcFeedRoutes = require('./routes/npc_feed');
 const brainCrudRoutes = require('./routes/brainCrud');
 const couplePhotoRoutes = require('./routes/couplePhoto');
+const contactsRoutes = require('./routes/contacts');
 
 const app = express();
 const port = process.env.PORT || 4001;
@@ -57,6 +60,7 @@ app.use('/api/users', userDiscoveryRoutes); // Added route usage
 app.use('/api/voice', voiceRoutes);
 app.use('/api', brainCrudRoutes);
 app.use('/api', couplePhotoRoutes);
+app.use('/api', contactsRoutes);
 
 // Avatar Generation Route
 app.post('/api/generate-avatar', async (req, res) => {
@@ -73,6 +77,48 @@ app.post('/api/generate-avatar', async (req, res) => {
         // If result starts with http, it's a full URL (Supabase), otherwise it's a filename (local fallback)
         const imageUrl = result.startsWith('http') ? result : `http://${req.headers.host}/${result}`;
         res.json({ imageUrl });
+
+        // 🔊 Try generating voice master if missing
+        if (npcId) {
+            try {
+                const { data: npc } = await supabase.from('npcs').select('*').eq('id', npcId).single();
+                if (npc && !npc.voice_master_url) {
+                    console.log('🎤 Generating voice master for NPC:', npcId);
+                    const voiceData = await generateNpcVoiceMaster({
+                        name: npc.name,
+                        age: npc.age || 25,
+                        gender: npc.gender || 'female',
+                        tone_mode: npc.tone || 'soft',
+                        energy: npc.energy || 'medium',
+                        speaking_speed: npc.speaking_speed || 'normal',
+                        shyness: npc.shyness || 0.5,
+                        confidence: npc.confidence || 0.5,
+                        accent: npc.accent || 'italian'
+                    });
+
+                    if (voiceData?.voiceUrl) {
+                        const { error: voiceUpdateError } = await supabase
+                            .from('npcs')
+                            .update({
+                                voice_master_url: voiceData.voiceUrl,
+                                voice_engine: voiceData.voiceEngine || null,
+                                voice_profile: voiceData.voiceProfile ? JSON.stringify(voiceData.voiceProfile) : null
+                            })
+                            .eq('id', npcId);
+
+                        if (voiceUpdateError) {
+                            console.error('❌ Failed to update NPC voice_master_url:', voiceUpdateError);
+                        } else {
+                            console.log('✅ NPC voice_master_url saved:', voiceData.voiceUrl);
+                        }
+                    } else {
+                        console.warn('⚠️ Voice master generation returned no URL for NPC:', npcId);
+                    }
+                }
+            } catch (voiceErr) {
+                console.error('❌ Voice master generation failed for NPC:', npcId, voiceErr);
+            }
+        }
     } catch (error) {
         console.error('Avatar generation error:', error);
         res.status(500).json({ error: 'Failed to generate avatar' });
@@ -136,13 +182,98 @@ app.get('/api/chat-history/:userId/:npcId', async (req, res) => {
     const { limit = 50, offset = 0 } = req.query;
 
     try {
+        // Detect if the target is another user (contact chat) or an NPC
+        let targetUser = null;
+        try {
+            const { data: userLookup } = await supabase
+                .from('user_profile')
+                .select('id, username, avatar_url')
+                .eq('id', npcId)
+                .limit(1);
+            if (userLookup && userLookup.length > 0) {
+                targetUser = userLookup[0];
+            }
+        } catch (lookupErr) {
+            console.warn('User lookup failed (chat history):', lookupErr);
+        }
+
+        const limitInt = parseInt(limit);
+        const offsetInt = parseInt(offset);
+
+        if (targetUser) {
+            // User-to-user chat: fetch both directions and merge locally to keep ordering
+            const [
+                { data: sent, error: sentErr },
+                { data: received, error: recvErr },
+            ] = await Promise.all([
+                supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .eq('recipient_user_id', npcId),
+                supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('user_id', npcId)
+                    .eq('recipient_user_id', userId),
+            ]);
+
+            if (sentErr || recvErr) {
+                const err = sentErr || recvErr;
+                logToFile("Error fetching chat history (user-user): " + JSON.stringify(err));
+                return res.status(500).json({ error: err.message });
+            }
+
+            const merged = [...(sent || []), ...(received || [])].sort(
+                (a, b) => new Date(a.created_at) - new Date(b.created_at)
+            );
+            const sliced = merged.slice(offsetInt, offsetInt + limitInt);
+
+            const senderIds = [
+                ...new Set(
+                    sliced
+                        .map((row) => row.user_id)
+                        .filter((id) => !!id)
+                ),
+            ];
+
+            const { data: profiles, error: profileErr } = senderIds.length
+                ? await supabase
+                    .from('user_profile')
+                    .select('id, username, avatar_url')
+                    .in('id', senderIds)
+                : { data: [], error: null };
+
+            if (profileErr) {
+                console.warn('Unable to load sender profiles for history:', profileErr);
+            }
+
+            const profileMap = {};
+            (profiles || []).forEach((p) => {
+                profileMap[p.id] = p;
+            });
+
+            const enriched = sliced.map((row) => {
+                const profile = profileMap[row.user_id] || {};
+                return {
+                    ...row,
+                    sender_id: row.user_id,
+                    sender_name: profile.username || null,
+                    avatar_url: profile.avatar_url || null,
+                };
+            });
+
+            return res.json(enriched);
+        }
+
+        // NPC chat
         const { data, error } = await supabase
             .from('messages')
             .select('*')
             .eq('user_id', userId)
             .eq('npc_id', npcId)
             .order('created_at', { ascending: true })
-            .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+            .range(offsetInt, offsetInt + limitInt - 1);
 
         if (error) {
             logToFile("Error fetching chat history: " + JSON.stringify(error));
@@ -352,6 +483,24 @@ app.delete('/api/girlfriend/:id', async (req, res) => {
 
         if (messagesError) {
             logToFile("Error deleting messages: " + JSON.stringify(messagesError));
+        }
+
+        // Delete npc from group memberships
+        const { error: groupMembersError } = await supabase
+            .from('group_members')
+            .delete()
+            .eq('npc_id', id);
+        if (groupMembersError) {
+            logToFile("Error deleting npc from group_members: " + JSON.stringify(groupMembersError));
+        }
+
+        // Delete npc messages in groups
+        const { error: groupMessagesError } = await supabase
+            .from('group_messages')
+            .delete()
+            .eq('sender_id', id);
+        if (groupMessagesError) {
+            logToFile("Error deleting npc group messages: " + JSON.stringify(groupMessagesError));
         }
 
         // Delete npc from database

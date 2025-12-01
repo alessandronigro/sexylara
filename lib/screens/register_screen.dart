@@ -13,6 +13,7 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -21,16 +22,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _handleRegister() async {
     print('***** REGISTER BUTTON CLICKED');
+    final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
     print('***** Email: $email, Password length: ${password.length}');
 
-    if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+    if (name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
       print('***** ERROR: Empty fields');
       setState(() {
-        _error = 'Compila tutti i campi';
+        _error = 'Compila tutti i campi (nome incluso)';
       });
       return;
     }
@@ -59,10 +61,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     try {
       print('***** Calling Supabase signUp');
-      await SupabaseService.client.auth.signUp(
+      final resp = await SupabaseService.client.auth.signUp(
         email: email,
         password: password,
       );
+
+      final userId = resp.user?.id;
+      if (userId != null) {
+        try {
+          await SupabaseService.client.from('user_profile').upsert({
+            'id': userId,
+            'username': name,
+          });
+        } catch (profileErr) {
+          print('***** ERROR saving profile name: $profileErr');
+        }
+      }
       
       print('***** Registration successful');
       if (mounted) {
@@ -158,6 +172,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 16),
                   const SizedBox(height: 48),
+                  _buildTextField(
+                    controller: _nameController,
+                    label: 'Nome',
+                    icon: Icons.person_outline,
+                    keyboardType: TextInputType.name,
+                  ),
+                  const SizedBox(height: 16),
                   _buildTextField(
                     controller: _emailController,
                     label: 'Email',

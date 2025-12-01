@@ -6,7 +6,7 @@ import 'dart:convert';
 
 import '../config.dart';
 import '../services/supabase_service.dart';
-import '../services/group_service.dart';
+import '../widgets/main_top_bar.dart';
 
 class GroupListScreen extends ConsumerStatefulWidget {
   const GroupListScreen({super.key});
@@ -17,7 +17,6 @@ class GroupListScreen extends ConsumerStatefulWidget {
 
 class _GroupListScreenState extends ConsumerState<GroupListScreen> {
   List<dynamic> _groups = [];
-  List<dynamic> _invites = [];
   bool _loading = true;
 
   @override
@@ -38,22 +37,12 @@ class _GroupListScreenState extends ConsumerState<GroupListScreen> {
         headers: {'x-user-id': userId},
       );
 
-      // Load pending invites
-      final groupService = ref.read(groupServiceProvider);
-      List<dynamic> invites = [];
-      try {
-        invites = await groupService.fetchPendingInvites();
-      } catch (e) {
-        print('Error fetching invites: $e');
-      }
-
       if (mounted) {
         setState(() {
           if (respGroups.statusCode == 200) {
             final data = jsonDecode(respGroups.body);
             _groups = data['groups'] ?? [];
           }
-          _invites = invites;
           _loading = false;
         });
       }
@@ -63,46 +52,11 @@ class _GroupListScreenState extends ConsumerState<GroupListScreen> {
     }
   }
 
-  Future<void> _handleInvite(String inviteId, bool accept) async {
-    try {
-      final groupService = ref.read(groupServiceProvider);
-      await groupService.respondToInvite(inviteId, accept);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(accept ? 'Invito accettato!' : 'Invito rifiutato.')),
-        );
-      }
-      
-      // Reload data
-      _loadData();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore: $e')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Gruppi'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add, color: Colors.pinkAccent),
-            tooltip: 'Crea Gruppo',
-            onPressed: () async {
-              await context.push('/groups/create');
-              _loadData(); // Reload on return
-            },
-          ),
-        ],
-      ),
+      appBar: const MainTopBar(active: MainTopBarSection.groups),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Colors.pinkAccent))
           : RefreshIndicator(
@@ -110,72 +64,8 @@ class _GroupListScreenState extends ConsumerState<GroupListScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // --- INVITES SECTION ---
-                  if (_invites.isNotEmpty) ...[
-                    const Text(
-                      'Inviti in sospeso',
-                      style: TextStyle(
-                        color: Colors.pinkAccent,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ..._invites.map((invite) {
-                      final groupName = invite['groups']?['name'] ?? 'Gruppo sconosciuto';
-                      return Card(
-                        color: const Color(0xFF2A2A2A),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Sei stato invitato a "$groupName"',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (invite['message'] != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    invite['message'],
-                                    style: TextStyle(color: Colors.grey[400], fontStyle: FontStyle.italic),
-                                  ),
-                                ),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => _handleInvite(invite['id'].toString(), false),
-                                    child: const Text('Rifiuta', style: TextStyle(color: Colors.grey)),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: () => _handleInvite(invite['id'].toString(), true),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.pinkAccent,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                    child: const Text('Accetta'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                    const Divider(color: Colors.grey),
-                    const SizedBox(height: 16),
-                  ],
-
                   // --- GROUPS SECTION ---
-                  if (_groups.isEmpty && _invites.isEmpty)
+                  if (_groups.isEmpty)
                     Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,

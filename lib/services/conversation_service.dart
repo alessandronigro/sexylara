@@ -20,8 +20,7 @@ class ConversationService {
           .eq('user_id', userId)
           .eq('is_active', true);
       return {
-        for (final row in (list as List))
-          row['id'] as String: Npc.fromJson(row)
+        for (final row in (list as List)) row['id'] as String: Npc.fromJson(row)
       };
     }
 
@@ -35,7 +34,7 @@ class ConversationService {
         .asyncMap((data) async {
           npcCache ??= await loadNpcMap();
           return data.map((json) {
-            final gf = npcCache?[json['npc_id'] ?? json['girlfriend_id']];
+            final gf = npcCache?[json['npc_id'] ?? json['npc_id']];
             if (gf != null) {
               return Conversation.fromJson({
                 ...json,

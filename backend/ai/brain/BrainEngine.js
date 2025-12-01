@@ -7,7 +7,6 @@ const { decideMotivation } = require('./MotivationLayer'); // motivazione domina
 const { buildPersonaState } = require('./PersonaLayer'); // mood/persona/relazione
 
 const IntentDetector = require('../intent/IntentDetector');
-const MediaIntentEngine = require('../intent/MediaIntentEngine');
 const SocialIntentEngine = require('../intent/SocialIntentEngine');
 const EmotionalIntentEngine = require('../intent/EmotionalIntentEngine');
 
@@ -24,9 +23,6 @@ const MemoryConsolidation = require('../learning/MemoryConsolidationEngine'); //
 const { getNpcProfile, updateNpcProfile } = require('../memory/npcRepository');
 const { supabase } = require('../../lib/supabase');
 const { detectLanguage } = require('../language/detectLanguage');
-const { getUserPhoto } = require('../media/getUserPhoto');
-const { saveUserPhoto } = require('../media/saveUserPhoto');
-const { askPhoto } = require('../language/translations');
 const { sanitizeHistoryForLLM } = require('../../utils/sanitizeHistory');
 
 const explicitOverrideTriggers = [
@@ -99,7 +95,7 @@ async function think(context) {
   // Lingua utente
   const detectedLang = detectLanguage(context.message);
   context.userLanguage = context.userLanguage || context.metadata?.language || detectedLang || 'en';
-  await supabase.from('users').update({
+  await supabase.from('user_profile').update({
     language: context.userLanguage,
     last_language_detected: detectedLang,
   }).eq('id', context.userId);
@@ -112,31 +108,15 @@ async function think(context) {
 
   // 2) Analisi del testo/media e intenzioni
   const intentReport = IntentDetector.detect(perception, processedContext);
-  const mediaIntent = await MediaIntentEngine.analyze(processedContext, perception);
   const socialIntent = SocialIntentEngine.analyze(processedContext, perception);
   const emotionalIntent = EmotionalIntentEngine.analyze(perception);
-  const motivation = decideMotivation(intentReport, mediaIntent, emotionalIntent);
+  const motivation = decideMotivation(intentReport, { wantsMedia: false, type: null }, emotionalIntent);
   const personaState = buildPersonaState(processedContext, motivation, emotionalIntent);
   processedContext.intentFlags = intentReport.flags || {};
 
-  // Se l'utente ha inviato un'immagine, salvala come foto profilo (priorità per couple photo)
-  if (context.media?.type === 'image' && context.media?.url) {
-    await saveUserPhoto(context.userId, context.media.url);
-  }
-
-  // Gestione richiesta couple photo → verifica presenza foto utente
+  // Media intent gestito esternamente da intentLLM: nessuna gestione locale
   let mediaRequestOverride = null;
   let cachedUserPhoto = null;
-  if (mediaIntent.type === 'couple_photo') {
-    cachedUserPhoto = await getUserPhoto(context.userId);
-    if (!cachedUserPhoto) {
-      mediaRequestOverride = {
-        type: 'user_photo_needed',
-        requireConfirmation: false,
-        reason: askPhoto[context.userLanguage] || askPhoto.it || 'Per fare la foto insieme ho bisogno di una tua foto.',
-      };
-    }
-  }
 
   // Aggiorna tone_mode in base ai feedback dell'utente
   if (intentReport.flags?.userWantsExplicitTone) {
@@ -171,46 +151,32 @@ async function think(context) {
     { role: "user", content: context.message },
   ];
 
-  console.log("---- 🧱 SYSTEM PROMPT ----");
-  console.log(prompt);
+  // Safety: ensure messagesArray is a valid array of role/content strings
+  const safeMessages = Array.isArray(messagesArray) ? messagesArray : [];
+  for (const m of safeMessages) {
+    if (typeof m.content !== 'string') {
+      m.content = m.content ? String(m.content) : '';
+    }
+  }
+
+  // console.log("---- 🧱 SYSTEM PROMPT ----");
+  // console.log(prompt);
 
   // =============================================================
   // 🔍 SUPER DEBUG – LOG COMPLETO di ciò che VIENE INVIATO a VENICE
   // =============================================================
-  if (process.env.NODE_ENV !== "production") {
-    console.log("\n\n===================== 🔍 VENICE DEBUG DUMP =====================");
+  // Debug verbose disabilitato per ridurre il rumore nei log
 
-    console.log("📌 MODEL:", process.env.MODEL_VENICE);
-    console.log("👤 NPC:", context.npc?.name);
-    console.log("💋 ToneMode:", context.npc?.preferences?.tone_mode);
-    console.log("🌍 Language:", context.userLanguage);
-    console.log("🧠 User Intent Flags:", intentReport?.flags || {});
-
-    console.log("\n---- 🧱 SYSTEM PROMPT ----");
-    console.log(prompt);
-
-    console.log("\n---- 📨 MESSAGES ARRAY (LLM Input) ----");
-    try {
-      console.log(JSON.stringify(messagesArray, null, 2));
-    } catch (err) {
-      console.log("⚠ ERROR PRINTING messagesArray:", err);
-    }
-
-    console.log("================================================================\n\n");
-  }
-
-  const llmResponse = await generate(messagesArray, context.npc?.model_override || null);
-  console.log("\n==================== VENICE RAW RESPONSE ====================");
-  console.log(llmResponse);
-  console.log("=============================================================\n");
+  const llmResponse = await generate(safeMessages, context.npc?.model_override || null);
+  console.log("🧠 Venice:", (llmResponse || '').toString().substring(0, 200));
   const processed = PostProcessor.process(llmResponse, {
     perception,
-    mediaIntent,
+    mediaIntent: { wantsMedia: false, type: null },
     motivation,
     toneMode: context.npc.preferences.tone_mode,
     lastOpenings: memory.lastOpenings || [],
     intentFlags: intentReport.flags || {},
-    mediaRequestOverride,
+    mediaRequestOverride: null,
   });
 
   // Se manca la foto utente e la richiesta è di couple_photo, forza testo esplicativo
@@ -246,7 +212,7 @@ async function think(context) {
   });
 
   const xp = ExperienceEngine.awardXp(context.npc, {
-    intimacy: mediaIntent.wantsMedia ? 3 : 1,
+    intimacy: 1,
     empathy: perception.textAnalysis.sentiment === 'negative' ? 3 : 1,
     conflict: intentReport.intents.includes('aggression') ? 4 : intentReport.intents.includes('frustration') ? 2 : 0,
     social: socialIntent.groupIntent === 'addressed' ? 2 : 1,
@@ -281,26 +247,9 @@ async function think(context) {
   // 6) Persisti il cervello NPC aggiornato in Supabase
   await updateNpcProfile(context.npcId, context.brain || context.npc);
 
-  let finalMediaRequest = mediaRequestOverride
-    || processed.mediaRequest
-    || (mediaIntent.type === 'couple_photo'
-      ? { type: 'couple_photo', requireConfirmation: true, reason: 'User is asking for a couple selfie' }
-      : undefined);
-
-  if (!finalMediaRequest && mediaIntent.wantsMedia) {
-    finalMediaRequest = {
-      type: mediaIntent.type,
-      requireConfirmation: true,
-      details: mediaIntent.details,
-    };
-  } else if (finalMediaRequest && mediaIntent.details && !finalMediaRequest.details) {
-    finalMediaRequest = { ...finalMediaRequest, details: mediaIntent.details };
-  }
+  let finalMediaRequest = null;
 
   const finalActions = [...processed.actions];
-  if (mediaRequestOverride?.type === 'user_photo_needed') {
-    finalActions.push('ASK_USER_FOR_PHOTO');
-  }
   if (!finalActions.includes('PERSONAL_REPLY')) {
     finalActions.push('PERSONAL_REPLY');
   }

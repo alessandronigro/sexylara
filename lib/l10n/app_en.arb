@@ -20,10 +20,16 @@
   "italian": "Italian",
   "selectLanguage": "Select Language",
   "welcome": "Welcome",
-  "createGirlfriend": "Create Companion",
+  "createGirlfriend": "Create Thriller",
   "gallery": "Gallery",
   "chat": "Chat",
   "loading": "Loading...",
   "errorLoading": "Error loading data",
-  "retry": "Retry"
+  "retry": "Retry",
+  "navMyThrillers": "My Thrillers",
+  "navFeed": "Feed",
+  "navGroups": "My Groups",
+  "navCreateThriller": "Create Thriller",
+  "navInviteThriller": "Invite Thriller",
+  "navProfile": "Profile"
 }

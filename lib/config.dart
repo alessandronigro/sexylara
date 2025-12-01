@@ -12,7 +12,7 @@ class Config {
     const envUrl = String.fromEnvironment('BACKEND_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kReleaseMode) {
-      return 'https://sexylara.chat';
+      return 'https://thril.me';
     }
     return 'http://$_host:4000';
   }
@@ -21,7 +21,7 @@ class Config {
     const envUrl = String.fromEnvironment('AI_SERVICE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kReleaseMode) {
-      return 'https://sexylara.chat';
+      return 'https://thril.me';
     }
     return 'http://$_host:4000'; // Assuming AI service is on same port or proxied
   }
@@ -30,7 +30,7 @@ class Config {
     const envUrl = String.fromEnvironment('WS_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kReleaseMode) {
-      return 'wss://sexylara.chat';
+      return 'wss://thril.me';
     }
     return 'ws://$_host:5001';
   }

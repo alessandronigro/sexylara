@@ -6,7 +6,7 @@ import '../models/npc_post.dart';
 class NpcFeedService {
   static String get baseUrl => '${Config.apiBaseUrl}/api/feed';
 
-  /// Pubblica un NPC nella bacheca pubblica
+  /// Pubblica un Thriller nella bacheca pubblica
   static Future<Map<String, dynamic>> publishNpc({
     required String npcId,
     String? message,
@@ -24,7 +24,6 @@ class NpcFeedService {
         if (response.statusCode == 200) {
           return jsonDecode(response.body);
         } else if (response.statusCode == 303) {
-          // Follow redirect to public feed
           final location = response.headers['location'];
           if (location != null) {
             final feedResponse = await http.get(
@@ -32,7 +31,9 @@ class NpcFeedService {
               headers: {'Content-Type': 'application/json'},
             );
             if (feedResponse.statusCode == 200) {
-              return jsonDecode(feedResponse.body);
+              final decoded = jsonDecode(feedResponse.body);
+              // Trigger navigation data hint for web: return marker
+              return {'redirected': true, 'feed': decoded};
             } else {
               throw Exception('Errore caricamento feed dopo redirect: ${feedResponse.body}');
             }
@@ -83,7 +84,7 @@ class NpcFeedService {
         final List data = jsonDecode(response.body);
         return data.map((e) => NpcPost.fromJson(e)).toList();
       } else {
-        throw Exception('Errore caricamento post NPC: ${response.body}');
+        throw Exception('Errore caricamento post Thriller: ${response.body}');
       }
     } catch (e) {
       print('❌ Errore getNpcFeed: $e');
@@ -169,7 +170,7 @@ class NpcFeedService {
     }
   }
 
-  /// Vota un NPC (1-5 stelle)
+  /// Vota un Thriller (1-5 stelle)
   static Future<Map<String, dynamic>> rateNpc({
     required String npcId,
     required String userId,
@@ -201,7 +202,7 @@ class NpcFeedService {
     }
   }
 
-  /// Ottiene il rating medio di un NPC
+  /// Ottiene il rating medio di un Thriller
   static Future<Map<String, dynamic>> getNpcRating(String npcId) async {
     try {
       final response = await http.get(

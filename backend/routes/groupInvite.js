@@ -6,6 +6,81 @@ const router = express.Router();
 const { supabase } = require('../lib/supabase');
 
 // ===============================================================
+// GET /api/group/discover/users
+// Elenco utenti invitabili in base alle impostazioni di privacy (is_public = true)
+// search opzionale per filtrare per email/username/name
+// ===============================================================
+router.get('/group/discover/users', async (req, res) => {
+  const requesterId = req.headers['x-user-id'];
+  const { search } = req.query;
+  if (!requesterId) return res.status(401).json({ error: 'User not authenticated' });
+
+  try {
+    let query = supabase
+      .from('user_profile')
+      .select('id, username, avatar_url, is_public')
+      .eq('is_public', true)
+      .neq('id', requesterId)
+      .limit(50);
+
+    if (search && search.trim()) {
+      query = query.ilike('username', `%${search}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const users = (data || []).map(u => ({
+      id: u.id,
+      name: u.username || 'Utente',
+      avatar: u.avatar_url || null
+    }));
+
+    res.json({ users });
+  } catch (err) {
+    console.error('Error discovering users:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===============================================================
+// GET /api/group/discover/npcs
+// Elenco NPC invitabili (is_public = true)
+// search opzionale per filtrare per nome
+// ===============================================================
+router.get('/group/discover/npcs', async (req, res) => {
+  const requesterId = req.headers['x-user-id'];
+  const { search } = req.query;
+  if (!requesterId) return res.status(401).json({ error: 'User not authenticated' });
+
+  try {
+    let query = supabase
+      .from('npcs')
+      .select('id, name, avatar_url, is_public')
+      .eq('is_public', true)
+      .limit(50);
+
+    if (search && search.trim()) {
+      query = query.ilike('name', `%${search}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const npcs = (data || []).map(n => ({
+      id: n.id,
+      name: n.name || 'NPC',
+      avatar: n.avatar_url || null
+    }));
+
+    res.json({ npcs });
+  } catch (err) {
+    console.error('Error discovering NPCs:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===============================================================
 // POST /api/group/invite
 // Invia un invito a un utente o AI per unirsi a un gruppo
 // ===============================================================

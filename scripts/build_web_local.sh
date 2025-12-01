@@ -1,6 +1,11 @@
 #!/bin/bash
 
-ENV_FILE="../env/local.env"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+ENV_FILE="$REPO_ROOT/env/local.env"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "❌ ERRORE: File $ENV_FILE non trovato!"
@@ -13,6 +18,8 @@ source "$ENV_FILE"
 set +a
 
 echo "🏠 Build Web LOCAL per ThrillMe..."
+
+cd "$REPO_ROOT"
 
 flutter clean
 flutter pub get
@@ -28,16 +35,11 @@ flutter build web \
   --dart-define=FLUTTER_WEB_USE_SKWASM="$FLUTTER_WEB_USE_SKWASM" \
   --release
 
-if [ $? -eq 0 ]; then
-  echo "✅ Build web completata!"
-  cd ../build/web
-  pids=$(lsof -ti tcp:8080 || true)
-  if [ -n "$pids" ]; then
-    echo "⚠️ Porta 8080 già in uso, chiudo il processo esistente: $pids"
-    kill $pids
-  fi
-  python3 -m http.server 8080  --bind 192.168.1.42
-else
-  echo "❌ Build fallita!"
-  exit 1
+echo "✅ Build web completata!"
+cd "$REPO_ROOT/build/web"
+pids=$(lsof -ti tcp:8080 || true)
+if [ -n "$pids" ]; then
+  echo "⚠️ Porta 8080 già in uso, chiudo il processo esistente: $pids"
+  kill $pids
 fi
+python3 -m http.server 8080 --bind 192.168.1.42

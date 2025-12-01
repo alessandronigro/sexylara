@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'screens/privacy_settings_screen.dart';
+import 'screens/notification_settings_screen.dart';
+import 'screens/support_screen.dart';
+import 'screens/payment_methods_screen.dart';
 
 import 'providers/session_provider.dart';
 import 'screens/login_screen.dart';
@@ -14,6 +20,7 @@ import 'screens/user_profile_screen.dart';
 import 'screens/preference_screen.dart';
 import 'screens/subscription_screen.dart';
 import 'screens/payment_success_screen.dart';
+import 'screens/discover_contacts_screen.dart';
 import 'screens/group_list_screen.dart';
 import 'screens/create_group_screen.dart';
 import 'screens/group_chat_screen.dart';
@@ -26,6 +33,10 @@ import 'screens/public_feed_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Use clean URLs on web (no #/login)
+  if (kIsWeb) {
+    usePathUrlStrategy();
+  }
   await SupabaseService.initialize();
   await NotificationService().initialize();
 
@@ -67,6 +78,7 @@ class ThrilMeApp extends ConsumerWidget {
             path: '/register',
             builder: (context, state) => const RegisterScreen()),
         GoRoute(path: '/', builder: (context, state) => const ContactsScreen()),
+        GoRoute(path: '/contacts', builder: (context, state) => const ContactsScreen()),
         GoRoute(
             path: '/create-npc',
             builder: (context, state) => const CreateNpcScreen()),
@@ -121,6 +133,25 @@ class ThrilMeApp extends ConsumerWidget {
         GoRoute(
             path: '/feed',
             builder: (context, state) => const PublicFeedScreen()),
+        GoRoute(
+            path: '/discover-contacts',
+            builder: (context, state) {
+              final initialTab = state.queryParameters['initialTab'];
+              return DiscoverContactsScreen(initialTab: initialTab);
+            }),
+        // New settings pages
+        GoRoute(
+          path: '/privacy',
+          builder: (context, state) => const PrivacySettingsScreen()),
+        GoRoute(
+          path: '/notifications',
+          builder: (context, state) => const NotificationSettingsScreen()),
+        GoRoute(
+          path: '/support',
+          builder: (context, state) => const SupportScreen()),
+        GoRoute(
+          path: '/payment-methods',
+          builder: (context, state) => const PaymentMethodsScreen()),
       ],
     );
 

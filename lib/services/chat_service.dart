@@ -19,6 +19,9 @@ class ChatService {
   final _ackController = StreamController<Map<String, String>>.broadcast();
   final _mediaEventController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final _npcStatusController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final Map<String, String> _lastTypingStatus = {};
 
   String? _activeNpcId;
   String? _activeNpcName;
@@ -27,6 +30,7 @@ class ChatService {
   Stream<String> get status => _statusController.stream;
   Stream<Map<String, String>> get messageAcks => _ackController.stream;
   Stream<Map<String, dynamic>> get mediaEvents => _mediaEventController.stream;
+  Stream<Map<String, dynamic>> get npcStatus => _npcStatusController.stream;
 
   void setActiveChat(String? npcId, String? npcName) {
     _activeNpcId = npcId;
@@ -45,6 +49,15 @@ class ChatService {
           final data = jsonDecode(event.toString());
 
           if (data['event'] != null) {
+            // npc_status events (typing / sending media)
+            if (data['event'] == 'npc_status') {
+              _npcStatusController.add(Map<String, dynamic>.from(data));
+              // Mantieni compatibilità con status stream per mostrare indicatori
+              if (data['status'] != null) {
+                _statusController.add(data['status'].toString());
+              }
+              return;
+            }
             _mediaEventController.add(Map<String, dynamic>.from(data));
             return;
           }
@@ -59,15 +72,17 @@ class ChatService {
             return;
           }
 
-          // Handle status updates (rendering_image, rendering_video, etc.)
+          // Handle legacy status updates
           if (data['status'] != null) {
             _statusController.add(data['status']);
+            // Clear on end marker handled below
             return;
           }
 
           // Handle end marker
           if (data['end'] == true) {
             _statusController.add('');
+            _npcStatusController.add({'status': ''});
             return;
           }
 
@@ -81,7 +96,7 @@ class ChatService {
             if (message.role == 'assistant' &&
                 npcId != null &&
                 npcId != _activeNpcId) {
-              final npcName = _activeNpcName ?? 'Companion';
+              final npcName = _activeNpcName ?? 'Thriller';
 
               if (message.type == MessageType.text) {
                 _notificationService.showMessageNotification(
@@ -172,7 +187,21 @@ class ChatService {
         content: mediaUrl ?? text,
         timestamp: DateTime.now(),
         status: MessageStatus.sent,
-        replyTo: replyTo));
+        replyTo: replyTo,
+        senderId: SupabaseService.currentUser?.id));
+  }
+
+  void sendTypingStatus(String npcId, {String status = 'typing'}) {
+    if (_channel == null) return;
+    final last = _lastTypingStatus[npcId];
+    if (last == status) return;
+    _lastTypingStatus[npcId] = status;
+    final payload = jsonEncode({
+      'event': 'typing',
+      'npc_id': npcId,
+      'status': status,
+    });
+    _channel!.sink.add(payload);
   }
 
   void dispose() {
@@ -188,6 +217,9 @@ class ChatService {
     }
     if (!_mediaEventController.isClosed) {
       _mediaEventController.close();
+    }
+    if (!_npcStatusController.isClosed) {
+      _npcStatusController.close();
     }
   }
 

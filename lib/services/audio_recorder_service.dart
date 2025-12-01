@@ -29,12 +29,9 @@ class AudioRecorderService {
   Future<bool> startRecording() async {
     try {
       // Check permission
-      if (!await hasPermission()) {
-        final granted = await requestPermission();
-        if (!granted) {
-          debugPrint('❌ Microphone permission denied');
-          return false;
-        }
+      if (!await hasPermission() && !await requestPermission()) {
+        debugPrint('❌ Microphone permission denied');
+        return false;
       }
 
       // Get temporary directory

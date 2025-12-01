@@ -43,6 +43,15 @@ router.get('/ai/list', async (req, res) => {
 
         if (pubGfErr) throw pubGfErr;
 
+        // Recupera utenti pubblici (reali) per aggiungerli ai contatti
+        const { data: publicUsers, error: usersErr } = await supabase
+            .from('user_profile')
+            .select('id, username, avatar_url, is_public')
+            .eq('is_public', true)
+            .neq('id', userId);
+
+        if (usersErr) throw usersErr;
+
         // Combina i risultati
         const allAi = [
             ...aiContacts.map(ai => ({
@@ -82,6 +91,18 @@ router.get('/ai/list', async (req, res) => {
                 isPublic: true,
                 isOwned: false,
                 type: 'girlfriend'
+            })),
+            ...(publicUsers || []).map(u => ({
+                id: u.id,
+                name: u.username || (u.email ? u.email.split('@')[0] : 'Utente'),
+                avatar: u.avatar_url || null,
+                personality: null,
+                tone: null,
+                age: null,
+                gender: null,
+                isPublic: true,
+                isOwned: false,
+                type: 'user'
             }))
         ];
 

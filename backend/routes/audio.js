@@ -2,11 +2,12 @@ const Replicate = require("replicate");
 const { runReplicateWithLogging } = require("../utils/replicateLogger");
 const logToFile = require("../utils/log");
 const { writeFile } = require("fs/promises");
+const path = require("path");
 const generatePrompt = require("./promptGenerator");
 const { v4: uuidv4 } = require("uuid");
 const storageService = require("../services/supabase-storage");
 
-const audio = async (prompt, voiceUrl, chatHistory = [], userId = null, girlfriendId = null, voiceProfile = null, voiceEngine = null) => {
+const audio = async (prompt, voiceUrl, chatHistory = [], userId = null, npcId = null, voiceProfile = null, voiceEngine = null) => {
   const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
   });
@@ -79,6 +80,7 @@ const audio = async (prompt, voiceUrl, chatHistory = [], userId = null, girlfrie
       const response2 = await fetch(audioUrl.toString());
       const arrayBuffer = await response2.arrayBuffer();
       buffer = Buffer.from(arrayBuffer);
+      console.log("🔈 Downloaded audio buffer length:", buffer.length);
     } else if (output?.getReader) {
       const reader = output.getReader();
       const chunks = [];
@@ -104,21 +106,14 @@ const audio = async (prompt, voiceUrl, chatHistory = [], userId = null, girlfrie
       }
     }
 
-    // Upload to Supabase Storage if userId and girlfriendId are provided
-    if (userId && girlfriendId) {
-      try {
-        const result = await storageService.uploadChatAudio(buffer, userId, girlfriendId);
-        console.log("✅ Audio uploaded to Supabase:", result.publicUrl);
-        return { type: "audio", mediaUrl: result.publicUrl };
-      } catch (uploadError) {
-        console.error("Error uploading audio to Supabase:", uploadError);
-      }
+    // Upload to Supabase Storage; require npcId, use userId or 'general' as prefix
+    const targetUser = userId || 'general';
+    if (!npcId) {
+      throw new Error('npcId is required to store audio');
     }
-
-    // Fallback: save locally
-    const fileaudio = `${uuidv4()}.wav`;
-    await writeFile("public/" + fileaudio, buffer);
-    return { type: "audio", mediaUrl: `/${fileaudio}` };
+    const result = await storageService.uploadChatAudio(buffer, targetUser, npcId);
+    console.log("✅ Audio uploaded to Supabase:", result.publicUrl);
+    return { type: "audio", mediaUrl: result.publicUrl };
   } catch (error) {
     logToFile(error);
     throw error;

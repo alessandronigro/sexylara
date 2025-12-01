@@ -20,6 +20,7 @@ class Npc {
   final String tone;
 
   final bool isActive;
+  final bool isPublic;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -40,11 +41,18 @@ class Npc {
     this.personalityType,
     this.tone = 'flirty',
     this.isActive = true,
+    this.isPublic = false,
     required this.createdAt,
     required this.updatedAt,
   });
 
   factory Npc.fromJson(Map<String, dynamic> json) {
+    DateTime _parseDate(dynamic value) {
+      if (value == null) return DateTime.now();
+      if (value is DateTime) return value;
+      return DateTime.tryParse(value.toString()) ?? DateTime.now();
+    }
+
     return Npc(
       id: json['id'],
       userId: json['user_id'],
@@ -62,8 +70,9 @@ class Npc {
       personalityType: json['personality_type'],
       tone: json['tone'] ?? 'flirty',
       isActive: json['is_active'] ?? true,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
+      isPublic: json['is_public'] ?? false,
+      createdAt: _parseDate(json['created_at']),
+      updatedAt: _parseDate(json['updated_at']),
     );
   }
 
@@ -85,6 +94,7 @@ class Npc {
       'personality_type': personalityType,
       'tone': tone,
       'is_active': isActive,
+      'is_public': isPublic,
     };
   }
 
@@ -105,6 +115,7 @@ class Npc {
     String? personalityType,
     String? tone,
     bool? isActive,
+    bool? isPublic,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -125,6 +136,7 @@ class Npc {
       personalityType: personalityType ?? this.personalityType,
       tone: tone ?? this.tone,
       isActive: isActive ?? this.isActive,
+      isPublic: isPublic ?? this.isPublic,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

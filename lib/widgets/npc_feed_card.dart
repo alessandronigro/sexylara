@@ -24,7 +24,7 @@ class _NpcFeedCardState extends State<NpcFeedCard> {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Column(
@@ -33,7 +33,7 @@ class _NpcFeedCardState extends State<NpcFeedCard> {
           // Header con avatar e nome NPC
           if (widget.post.npcName != null)
             Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
               child: Row(
                 children: [
                   // Avatar NPC
@@ -80,20 +80,26 @@ class _NpcFeedCardState extends State<NpcFeedCard> {
 
           // Media (immagine o audio)
           if (widget.post.mediaUrl != null && widget.post.mediaType == 'image')
-            CachedNetworkImage(
-              imageUrl: widget.post.mediaUrl!,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: 300,
-              placeholder: (context, url) => Container(
-                height: 300,
-                color: Colors.grey[200],
-                child: const Center(child: CircularProgressIndicator()),
-              ),
-              errorWidget: (context, url, error) => Container(
-                height: 300,
-                color: Colors.grey[200],
-                child: const Icon(Icons.error, size: 48),
+            AspectRatio(
+              aspectRatio: 3 / 4,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(0),
+                  topRight: Radius.circular(0),
+                ),
+                child: CachedNetworkImage(
+                  imageUrl: widget.post.mediaUrl!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Colors.black,
+                    child: const Center(child: CircularProgressIndicator()),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.black,
+                    child: const Icon(Icons.error, size: 48, color: Colors.white),
+                  ),
+                ),
               ),
             ),
           
@@ -116,7 +122,7 @@ class _NpcFeedCardState extends State<NpcFeedCard> {
           // Caption
           if (widget.post.caption != null)
             Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
               child: Text(
                 widget.post.caption!,
                 style: const TextStyle(fontSize: 15),
@@ -125,7 +131,7 @@ class _NpcFeedCardState extends State<NpcFeedCard> {
 
           // Azioni (Like, Commenti)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
               children: [
                 // Like button

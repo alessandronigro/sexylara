@@ -18,11 +18,12 @@ async function generateNpcVoiceMaster(npc) {
         else if (npc.energy === 'low') speed = 0.85;
         else if (npc.speaking_speed === 'slow') speed = 0.9;
 
+        // Emotion must be one of: auto, happy, sad, angry, fearful, disgusted, surprised, calm, fluent, neutral
         let emotion = 'neutral';
         if (npc.tone_mode === 'soft') emotion = 'calm';
         else if (npc.tone_mode === 'flirty') emotion = 'happy';
-        else if (npc.tone_mode === 'romantic') emotion = 'gentle';
-        else if (npc.tone_mode === 'explicit') emotion = 'serious';
+        else if (npc.tone_mode === 'romantic') emotion = 'calm';
+        else if (npc.tone_mode === 'explicit') emotion = 'neutral';
 
         let volume = 1;
         if (npc.shyness > 0.7) volume = 0.85;
@@ -83,7 +84,8 @@ async function generateNpcVoiceMaster(npc) {
             // Use storage service to upload
             const storageService = require('./supabase-storage');
             const filename = `voice_master_${npc.name.replace(/\s+/g, '_')}_${Date.now()}.mp3`;
-            const uploadPath = `voice-masters/${filename}`;
+            // Path relative to bucket (no leading folder duplication)
+            const uploadPath = filename;
 
             const { data, error } = await require('../lib/supabase').supabase.storage
                 .from('voice-masters') // Assuming a bucket for voice masters exists or use chat-audio

@@ -8,7 +8,7 @@ const { runReplicateWithLogging } = require('../utils/replicateLogger');
 // ===============================================================
 //  GENERA AVATAR DI BASE (FOCUSSATO SUL VISO)
 // ===============================================================
-async function generateAvatar(prompt, girlfriendId = null, faceImageUrl = null) {
+async function generateAvatar(prompt, npcId = null, faceImageUrl = null) {
   const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
   });
@@ -48,8 +48,8 @@ async function generateAvatar(prompt, girlfriendId = null, faceImageUrl = null) 
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload avatar to Supabase
-    if (girlfriendId) {
-      const result = await storageService.uploadAvatar(buffer, girlfriendId);
+    if (npcId) {
+      const result = await storageService.uploadAvatar(buffer, npcId);
       return result.publicUrl;
     } else {
       const filename = `${uuidv4()}.png`;
@@ -137,46 +137,72 @@ async function generateImage(prompt, npc = null, userId = null, language = 'en',
 
   // ========== 3️⃣ RECUPERA FACCIA NPC PER FACESWAP ==========
   const faceImage = _options.faceImageUrl || (npc ? await resolveNpcFaceImage(npc, language) : null);
+  const hasFaceImage = !!faceImage;
 
   // ========== 4️⃣ SEED CASUALE PER POSE/SCENE SEMPRE DIVERSE ==========
   const randomSeed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 
   // ========== 5️⃣ INPUT OTTIMIZZATO PER VISI CONSISTENTI ==========
   const input = {
-    // ===== PROMPT =====
-    prompt: `${enhancedPrompt}, perfect symmetric eyes, photorealistic skin, ultra detailed face`,
+    prompt: `
+${enhancedPrompt},
+
+cinematic look, realistic skin texture,
+
+consistent lighting, natural shadows,
+
+well-proportioned body, cohesive face-body integration,
+
+sharp details, high dynamic range,
+
+perfect color matching between face and body
+
+    `.trim(),
+
+    // FACE REFERENCE
     face: faceImage,
+    face_strength: 0.65,            // 🔽 ridotto → meno distorsioni
+    face_guidance: 8,               // 🔽 più basso → blending più naturale
+    identity_weight: 0.75,          // 🔽 permette integrazione col corpo
+    identity_preservation: "medium",
 
-    // ===== FACE CONSISTENCY BOOST =====
-    face_strength: 0.88,            // aumenta l’effetto FaceSwap
-    face_guidance: 12,              // più alto → meno drift
-    identity_weight: 0.92,          // massima fedeltà al volto
-    identity_preservation: "high",
+    // CONTROLNET BODY (NEW 🔥)
+    cn_type1: hasFaceImage ? "FaceSwap" : null,
+    cn_img1: hasFaceImage ? faceImage : null,
+    cn_weight1: 0.85,
 
-    // ===== GENERAL SETTINGS =====
+
+
+
+
+    // CAMERA SETTINGS
+    sharpness: 2.2,
     preserve_prompt: true,
-    skip_enhance: true,
-    sharpness: 2,
+    skip_enhance: false,
+    refiner_switch: 0.35,
+    guidance_scale: 5.6,
+
+    // SEED
     image_seed: randomSeed,
-    uov_method: "Disabled",
     image_number: 1,
-    guidance_scale: 6.6,            // più alto = più fedeltà al prompt
-    refiner_switch: 0.40,
 
-    // ===== NEGATIVE PROMPT FIX (occhi, volto, distorsioni) =====
+    // NEGATIVE PROMPT FIX
     negative_prompt: `
-        distorted eyes, warped eyes, asymmetrical pupils,
-        googly eyes, mismatched eyes, lazy eye,
-        deformed face, mutated facial features,
-        bad face, bad anatomy, warped head,
-        cartoon, anime, plastic skin, glitch, watermark
-    `,
+deformed body, disproportioned limbs, warped torso,
 
-    // ===== STYLE / QUALITY =====
-    style_selections: "Fooocus V2,Fooocus Semi Realistic",
-    uov_upscale_value: 0,
-    performance_selection: "Speed",
+wrong skin tone, mismatched lighting,
+
+double face, bad blending,
+
+over-sharpened skin, plastic skin,
+
+cartoon, anime, watermark, logo
+
+    `.trim(),
+
     aspect_ratios_selection: "768*1280",
+    style_selections: "Fooocus V2,Fooocus Realistic Portrait",
+    performance_selection: "Quality"
   };
 
   console.log("🖼️ Face image for FaceSwap:", faceImage || 'none');
