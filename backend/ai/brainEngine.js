@@ -180,6 +180,8 @@ async function generateIntelligentResponse(ai, user, message, group = null, rece
     message,
     npcName: ai.name,
     history: recentMessages,
+    promptSystem: options.promptSystem,
+    lifeCore: options.lifeCore,
     metadata: {
       language,
       groupMode: !!group

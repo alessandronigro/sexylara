@@ -61,21 +61,27 @@ class NpcService {
     return await getNpc(id);
   }
 
-  /// Create new npc
-  Future<Npc> createNpc(Npc npc) async {
+  /// Create new npc via backend generator (LifeCore + prompt)
+  Future<Map<String, dynamic>> createNpcViaGenerator({
+    required Map<String, dynamic> seed,
+  }) async {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
-    final data = npc.toJson();
-    data['user_id'] = userId;
+    final resp = await http.post(
+      Uri.parse('${Config.apiBaseUrl}/api/npcs/generate'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': userId,
+      },
+      body: jsonEncode({'seed': seed}),
+    );
 
-    final response = await _supabase
-        .from('npcs')
-        .insert(data)
-        .select()
-        .single();
+    if (resp.statusCode != 200) {
+      throw Exception('Impossibile creare NPC: ${resp.body}');
+    }
 
-    return Npc.fromJson(response);
+    return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   /// Update existing npc

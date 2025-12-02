@@ -29,6 +29,7 @@ function analyze(message) {
     tone: style,
     intentHints,
     length: message?.length ?? 0,
+    raw: message || ''
   };
 }
 

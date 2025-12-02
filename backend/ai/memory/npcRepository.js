@@ -95,25 +95,38 @@ function buildFromGirlfriend(gf, evo) {
 }
 
 async function getNpcProfile(npcId, fallbackName) {
-  // Try existing npc_profiles.data
-  const { data: existing, error: existingErr } = await supabase
+  // Load npc_profiles row (may contain LifeCore/prompt_system)
+  const { data: profileRow, error: profileErr } = await supabase
     .from('npc_profiles')
-    .select('data')
+    .select('*')
     .eq('id', npcId)
-    .single();
-  if (!existingErr && existing && existing.data) {
-    return { data: existing.data };
+    .maybeSingle();
+
+  // Load npc base row
+  const { data: npcRow, error: npcErr } = await supabase
+    .from('npcs')
+    .select('id, name, avatar_url, ethnicity, body_type, hair_length, hair_color, eye_color, height_cm, age, gender, tone, personality_type, characteristics, bio, level, xp, user_id, prompt_system')
+    .eq('id', npcId)
+    .maybeSingle();
+
+  if (profileErr && !npcRow) {
+    const seeded = { ...DEFAULT_NPC_TEMPLATE, id: npcId, name: fallbackName || DEFAULT_NPC_TEMPLATE.name };
+    return { data: seeded, profile: null, npc: null };
   }
 
-  // Load girlfriend record
-  const { data: gf, error: gfErr } = await supabase
-    .from('npcs')
-    .select('id, name, avatar_url, ethnicity, body_type, hair_length, hair_color, eye_color, height_cm, age, gender, tone, personality_type, characteristics, bio, level, xp, user_id')
-    .eq('id', npcId)
-    .single();
-  if (gfErr || !gf) {
+  if (profileRow && profileRow.data) {
+    const base = profileRow.data || {};
+    const lifeCore = base.npc_json || base.lifeCore || null;
+    const promptSystem = base.prompt_system || base.promptSystem || null;
+    const enriched = { ...base };
+    if (promptSystem) enriched.prompt_system = promptSystem;
+    if (lifeCore) enriched.npc_json = lifeCore;
+    return { data: enriched, lifeCore, promptSystem, profile: profileRow, npc: npcRow };
+  }
+
+  if (!npcRow) {
     const seeded = { ...DEFAULT_NPC_TEMPLATE, id: npcId, name: fallbackName || DEFAULT_NPC_TEMPLATE.name };
-    return { data: seeded };
+    return { data: seeded, profile: null, npc: null };
   }
 
   // Load latest personality evolution (optional)
@@ -134,26 +147,45 @@ async function getNpcProfile(npcId, fallbackName) {
     };
   }
 
-  const npc = buildFromGirlfriend(gf, evoTraits);
+  const npc = buildFromGirlfriend(npcRow, evoTraits);
 
   // Save initial profile if not present
-  if (existingErr) {
+  if (profileErr) {
     await supabase
       .from('npc_profiles')
-      .insert({ id: npcId, name: gf.name, data: npc });
+      .insert({ id: npcId, name: npcRow.name, data: npc });
   }
 
-  return { data: npc };
+  return { data: npc, profile: profileRow, npc: npcRow };
 }
 
 async function updateNpcProfile(npcId, data) {
+  // Preserve existing prompt_system / npc_json / seed if present
+  let base = {};
+  try {
+    const { data: existing } = await supabase
+      .from('npc_profiles')
+      .select('data')
+      .eq('id', npcId)
+      .single();
+    base = existing?.data || {};
+  } catch (_) {
+    base = {};
+  }
+
   const profileData = {
+    ...base,
     ...data,
     preferences: {
+      ...(base.preferences || {}),
       ...(data.preferences || {}),
-      tone_mode: (data.preferences || {}).tone_mode || 'soft',
+      tone_mode: (data.preferences || {}).tone_mode || (base.preferences || {}).tone_mode || 'soft',
     },
   };
+  // preserve prompt_system/npc_json/seed if not provided
+  if (base.prompt_system && !profileData.prompt_system) profileData.prompt_system = base.prompt_system;
+  if (base.npc_json && !profileData.npc_json) profileData.npc_json = base.npc_json;
+  if (base.seed && !profileData.seed) profileData.seed = base.seed;
   // Persist XP/level
   await supabase
     .from('npcs')

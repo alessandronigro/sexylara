@@ -1,0 +1,69 @@
+const PromptBuilder = require('../generation/PromptBuilder');
+const { generate } = require('../generation/LlmClient');
+const PostProcessor = require('../generation/PostProcessor');
+const { sanitizeHistoryForLLM } = require('../../utils/sanitizeHistory');
+const { buildSceneContext } = require('./SceneEngine');
+const { selectResponders } = require('./GroupTurnEngine');
+
+function normalizeHistory(history = [], npcId) {
+  return history.map((h) => {
+    if (h.role) return h;
+    const senderId = h.sender_id || h.senderId;
+    const role = senderId && senderId === npcId ? 'assistant' : 'user';
+    return { role, content: h.content || '' };
+  });
+}
+
+async function generateForNpc(npc, context, scene) {
+  const userLanguage = context.userLanguage || context.lifeCore?.identity?.language || 'it';
+  const safeHistory = normalizeHistory(context.history || [], npc.id);
+  const prompt = PromptBuilder.buildPrompt({
+    ...context,
+    npc,
+    userLanguage,
+    history: safeHistory,
+    mediaAnalysis: context.mediaAnalysis,
+  });
+
+  const messagesArray = [
+    { role: 'system', content: prompt },
+    ...sanitizeHistoryForLLM(safeHistory || []).map((h) => ({ role: h.role, content: h.content })),
+    { role: 'user', content: context.message },
+  ];
+
+  const llmResponse = await generate(messagesArray, npc?.model_override || null);
+  const processed = PostProcessor.process(llmResponse, {
+    perception: context.perception || {},
+    mediaIntent: { wantsMedia: false, type: null },
+    motivation: { primaryIntent: scene.topic || 'group', secondaryIntents: [] },
+    toneMode: npc.preferences?.tone_mode || 'soft',
+    lastOpenings: [],
+    intentFlags: {},
+    mediaRequestOverride: null,
+  });
+
+  return {
+    npcId: npc.id,
+    text: processed.text,
+    mediaRequest: processed.mediaRequest || null,
+  };
+}
+
+async function think(context) {
+  const scene = buildSceneContext(context);
+  const responders = selectResponders(context, scene);
+  if (!responders.length) {
+    console.warn('[GroupBrainEngine] No responders selected');
+  }
+  const replies = [];
+  for (const npc of responders) {
+    const reply = await generateForNpc(npc, context, scene);
+    if (reply && reply.text) replies.push(reply);
+  }
+  if (!replies.length) {
+    console.warn('[GroupBrainEngine] No replies generated');
+  }
+  return replies;
+}
+
+module.exports = { think };

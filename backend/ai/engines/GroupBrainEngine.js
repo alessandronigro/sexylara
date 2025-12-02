@@ -1,5 +1,5 @@
-const { supabase } = require('../lib/supabase');
-const generateChatReply = require('../routes/openRouterService');
+const { supabase } = require('../../lib/supabase');
+const generateChatReply = require('../../routes/openRouterService');
 
 const groupContextCache = new Map();
 const CACHE_TTL = 10 * 60 * 1000;

@@ -92,35 +92,48 @@ router.delete('/groups/:id', async (req, res) => {
     }
 });
 
-// Add or remove members from a group
+// Add or remove members (user or npc) from a group
 router.post('/groups/:id/members', async (req, res) => {
     const { id } = req.params;
-    const { add = [], remove = [] } = req.body; // arrays of npc IDs
+    const { add = [], remove = [] } = req.body; // add/remove: array di { member_id, member_type }
     const userId = req.headers['x-user-id'];
     try {
         // Verify ownership
-        const { error: ownErr } = await supabase
+        const { data: grp, error: ownErr } = await supabase
             .from('groups')
-            .select('id')
+            .select('id, user_id')
             .eq('id', id)
-            .eq('user_id', userId)
             .maybeSingle();
         if (ownErr) throw ownErr;
-        if (!data) return res.status(404).json({ error: 'Group not found or access denied' });
+        if (!grp || grp.user_id !== userId) return res.status(404).json({ error: 'Group not found or access denied' });
 
-        if (add.length) {
-            const rows = add.map(gfId => ({ group_id: id, npc_id: gfId }));
-            const { error: addErr } = await supabase.from('group_members').insert(rows);
-            if (addErr) throw addErr;
+        // Add members
+        if (Array.isArray(add) && add.length) {
+            const rows = add.map(m => ({
+                group_id: id,
+                member_id: m.member_id || m.id,
+                member_type: (m.member_type || m.type || 'npc').toLowerCase(),
+                npc_id: (m.member_type || m.type || '').toLowerCase() === 'npc' ? (m.member_id || m.id) : null,
+            })).filter(r => r.member_id);
+            if (rows.length) {
+                const { error: addErr } = await supabase.from('group_members').insert(rows);
+                if (addErr) throw addErr;
+            }
         }
-        if (remove.length) {
-            const { error: remErr } = await supabase
-                .from('group_members')
-                .delete()
-                .eq('group_id', id)
-                .in('npc_id', remove);
-            if (remErr) throw remErr;
+
+        // Remove members
+        if (Array.isArray(remove) && remove.length) {
+            const memberIds = remove.map(m => m.member_id || m.id).filter(Boolean);
+            if (memberIds.length) {
+                const { error: remErr } = await supabase
+                    .from('group_members')
+                    .delete()
+                    .eq('group_id', id)
+                    .in('member_id', memberIds);
+                if (remErr) throw remErr;
+            }
         }
+
         res.json({ success: true });
     } catch (e) {
         console.error('Error updating group members:', e);

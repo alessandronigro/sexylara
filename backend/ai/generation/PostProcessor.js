@@ -25,6 +25,16 @@ const bannedPhrases = [
   'se hai bisogno',
   'non esitare a',
   'sono programmata',
+  'sono un ai',
+  'sono una ai',
+  'sono un assistente ai',
+  'sono un assistente virtuale',
+  'sono un modello',
+  'sono un\'intelligenza artificiale',
+  'sono stata creata',
+  'venice',
+  'scusa ma non posso',
+  'mi dispiace ma non posso'
 ];
 
 const openings = {
@@ -119,6 +129,14 @@ function process(output, context) {
 
   if (intentFlags?.userWantsMorePlayfulOrSpicy) {
     toneMode = 'explicit';
+    console.log('[PostProcessor] Detected provocative tone → switching to explicit mode');
+  }
+  if (intentFlags?.userWantsExplicitSexualTone) {
+    toneMode = 'explicit';
+    console.log('[PostProcessor] Detected explicit sexual tone request');
+  }
+  if (context?.motivation?.motivation === 'sedurre') {
+    console.log('[PostProcessor] Motivation sedurre detected');
   }
 
   // 1. Filter banned phrases

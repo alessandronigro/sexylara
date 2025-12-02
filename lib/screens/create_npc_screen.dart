@@ -99,121 +99,66 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
 
   Future<void> _createNpc() async {
     if (!mounted) return;
-    
-    String loadingMessage = 'Creando il tuo Thriller...';
-    
-    // Show loading dialog
+    setState(() => _generating = true);
+
+    const loadingMessage = 'Creando il tuo Thriller...';
+
+    // Show loading dialog con animazione pulsante
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => WillPopScope(
         onWillPop: () async => false,
-        child: StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              backgroundColor: const Color(0xFF1A1A1A),
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(color: Colors.pinkAccent),
-                    const SizedBox(height: 24),
-                    Text(
-                      loadingMessage,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Questo potrebbe richiedere qualche secondo',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 14,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
+        child: const _AnimatedGeneratingDialog(message: loadingMessage),
       ),
     );
-    
+
     try {
       final userId = SupabaseService.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
-      final npc = Npc(
-        id: const Uuid().v4(),
-        userId: userId,
-        name: _name,
-        gender: _gender,
-        avatarUrl: null, // Will be set after avatar generation
-        ethnicity: _ethnicity,
-        bodyType: _bodyType,
-        hairLength: _hairLength,
-        hairColor: _hairColor,
-        eyeColor: _eyeColor,
-        heightCm: _heightCm,
-        age: _age,
-        personalityType: _personalityType,
-        tone: _tone,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      );
-
-      // Create npc first
-      await _npcService.createNpc(npc);
-
-      // Close creation dialog and show avatar generation dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-        
-        
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => _AvatarGenerationDialog(),
-        );
-      }
-      
-      try {
-        final characteristics = {
-          'name': _name,
-          'gender': _gender,
-          'age': _age,
+      // Build seed for generator
+      final seed = {
+        'gender': _gender,
+        'ageRange': _age,
+        'name': _name,
+        'archetype': _personalityType ?? _tone,
+        'vibe': _tone,
+        'sensuality': 'soft',
+        'language': 'it',
+        'hints': {
           'ethnicity': _ethnicity,
           'bodyType': _bodyType,
           'hairLength': _hairLength,
           'hairColor': _hairColor,
           'eyeColor': _eyeColor,
-          'personalityType': _personalityType,
-          'tone': _tone,
           'heightCm': _heightCm,
-          'npcId': npc.id, // Pass the ID for Supabase upload
-        };
-        
-        final avatarUrl = await _npcService.generateAvatar(characteristics);
-        
-        // Update the npc with the new avatar
-        final updatedNpc = npc.copyWith(avatarUrl: avatarUrl);
-        await _npcService.updateNpc(updatedNpc);
-      } catch (e) {
-        print('Errore generazione avatar: $e');
-        // Continue anyway, avatar can be generated later
-      }
+        },
+      };
+
+      // Call backend generator
+      final generated = await _npcService.createNpcViaGenerator(seed: seed);
+      final npcId = generated['npc_id']?.toString();
+      final avatarUrl = generated['avatar_url']?.toString();
 
       // Close loading dialog
       if (mounted) {
         Navigator.of(context).pop();
         // Navigate to chat
-        context.go('/chat/${npc.id}');
+        if (npcId != null) {
+          context.go('/chat/$npcId');
+        } else {
+          context.go('/');
+        }
+
+        // Optionally show avatar generation modal if avatar is missing
+        if (avatarUrl == null) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => _AvatarGenerationDialog(),
+          );
+        }
       }
     } catch (e) {
       // Close loading dialog
@@ -224,6 +169,8 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
           SnackBar(content: Text('Errore creazione: $e')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _generating = false);
     }
   }
 
@@ -287,12 +234,23 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
       child: Row(
         children: List.generate(5, (index) {
           return Expanded(
-            child: Container(
-              height: 4,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              height: index == _currentStep ? 6 : 4,
               margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
                 color: index <= _currentStep ? Colors.pinkAccent : Colors.grey[800],
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: index == _currentStep
+                    ? [
+                        BoxShadow(
+                          color: Colors.pinkAccent.withOpacity(0.4),
+                          blurRadius: 8,
+                          spreadRadius: 1,
+                        )
+                      ]
+                    : [],
               ),
             ),
           );
@@ -761,6 +719,85 @@ class _CreateNpcScreenState extends State<CreateNpcScreen> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
+  }
+}
+
+class _AnimatedGeneratingDialog extends StatefulWidget {
+  final String message;
+  const _AnimatedGeneratingDialog({required this.message});
+
+  @override
+  State<_AnimatedGeneratingDialog> createState() => _AnimatedGeneratingDialogState();
+}
+
+class _AnimatedGeneratingDialogState extends State<_AnimatedGeneratingDialog> {
+  bool _pulseUp = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: _pulseUp ? 0.9 : 1.05, end: _pulseUp ? 1.05 : 0.9),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeInOut,
+              onEnd: () => setState(() => _pulseUp = !_pulseUp),
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Colors.pinkAccent, Color(0xFF9C27B0)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.pinkAccent.withOpacity(0.5),
+                          blurRadius: 16,
+                          spreadRadius: 2,
+                        )
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.auto_awesome, color: Colors.white, size: 48),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            Text(
+              widget.message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Questo potrebbe richiedere qualche secondo',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

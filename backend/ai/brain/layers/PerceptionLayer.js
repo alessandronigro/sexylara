@@ -1,11 +1,12 @@
-const TextUnderstanding = require('../perception/TextUnderstanding');
-const VisionEngine = require('../perception/VisionEngine');
-const AudioEngine = require('../perception/AudioEngine');
+const TextUnderstanding = require('../../perception/TextUnderstanding');
+const VisionEngine = require('../../perception/VisionEngine');
+const AudioEngine = require('../../perception/AudioEngine');
 
 function analyze(context) {
   const textAnalysis = TextUnderstanding.analyze(context.message);
   const perception = {
     textAnalysis,
+    text: context.message || ''
   };
 
   if (context.media?.type === 'image') {

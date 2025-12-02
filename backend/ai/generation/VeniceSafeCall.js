@@ -1,14 +1,11 @@
 const Replicate = require("replicate");
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_KEY,
-});
-
 /**
  * VeniceSafeCall – wrapper universale per GPT-5/Venice via Replicate API 2025
  */
 async function veniceSafeCall(model, input) {
   try {
+    input = input || {};
     // ============ SANITIZZAZIONE ============
     if (input.messages) {
       if (!Array.isArray(input.messages)) input.messages = [];
@@ -34,26 +31,56 @@ async function veniceSafeCall(model, input) {
     input.verbosity = input.verbosity || "medium";
     input.reasoning_effort = input.reasoning_effort || "low";
 
-    // ============ CHIAMATA A REPLICATE (NUOVA API) ============
+    // ============ PREPARAZIONE CLIENT E PROMPT ============
+    const apiKey = process.env.REPLICATE_API_KEY || process.env.REPLICATE_API_TOKEN;
+    if (!apiKey) {
+      throw new Error("Missing Replicate API key (REPLICATE_API_KEY or REPLICATE_API_TOKEN)");
+    }
+    const replicate = new Replicate({ auth: apiKey });
 
-    const run = await replicate.run(model, {
-      input
-    });
+    const systemPrompt = (input.messages.find(m => m.role === "system")?.content || "").trim();
+    const dialogue = (input.messages || [])
+      .filter(m => m.role !== "system")
+      .map(m => {
+        const speaker = m.role === "assistant" ? "Assistant" : "User";
+        return `${speaker}: ${m.content}`;
+      })
+      .join("\n");
+    const prompt = dialogue ? `${dialogue}\nAssistant:` : "Assistant:";
 
-    // replicate.run() restituisce direttamente il risultato (string o array)
-    if (typeof run === "string") return run.trim() || "[EMPTY_RESPONSE]";
-    if (Array.isArray(run)) return run.join("").trim() || "[EMPTY_RESPONSE]";
+    const payload = {
+      prompt,
+      system_prompt: systemPrompt || "You are a helpful assistant.",
+      temperature: input.temperature ?? 0.7,
+      max_new_tokens: input.max_tokens ?? input.max_new_tokens ?? 500,
+      top_p: input.top_p ?? 0.9,
+    };
 
-    // Se è un oggetto, prova a estrarre output
-    if (run && typeof run === "object") {
-      if (run.output) return String(run.output).trim() || "[EMPTY_RESPONSE]";
-      return JSON.stringify(run);
+    // ============ CHIAMATA STREAMING REPLICATE ============
+    let output = "";
+    try {
+      const stream = await replicate.stream(model, { input: payload });
+      for await (const event of stream) {
+        if (typeof event === "string") {
+          output += event;
+        } else if (event?.output) {
+          output += Array.isArray(event.output) ? event.output.join("") : String(event.output);
+        }
+      }
+    } catch (streamErr) {
+      console.warn("⚠️ VeniceSafeCall stream fallback:", streamErr?.message || streamErr);
+      const res = await replicate.run(model, { input: payload });
+      if (Array.isArray(res)) output = res.join("");
+      else if (typeof res === "string") output = res;
+      else if (res?.output) output = Array.isArray(res.output) ? res.output.join("") : String(res.output);
+      else output = String(res || "");
     }
 
-    return "[EMPTY_RESPONSE]";
+    return output.trim() || "[EMPTY_RESPONSE]";
 
   } catch (err) {
-    console.error("❌ VeniceSafeCall ERROR:", err);
+    const status = err?.response?.status || err?.status;
+    console.error("❌ VeniceSafeCall ERROR:", err?.message || err, 'status:', status);
     return "[VENICE_ERROR]";
   }
 }

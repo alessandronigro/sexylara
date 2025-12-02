@@ -1,10 +1,19 @@
+// =====================================================
+// BRAIN ENGINE v2.1 - ThrillMe AI Core
+// =====================================================
 // Layered pipeline: input → stato → memoria → percezione → motivazione/persona → generazione
-const InputLayer = require('./InputLayer'); // normalizza testo e arricchisce metadati
-const StateLayer = require('./StateLayer'); // stato sintetico NPC
-const MemoryLayer = require('./MemoryLayer'); // memorie rilevanti
-const PerceptionLayer = require('./PerceptionLayer'); // analisi del messaggio/media
-const { decideMotivation } = require('./MotivationLayer'); // motivazione dominante
-const { buildPersonaState } = require('./PersonaLayer'); // mood/persona/relazione
+// AGGIORNATO: layers ora importati da brain/layers/
+
+const {
+  InputLayer,
+  StateLayer,
+  MemoryLayer,
+  PerceptionLayer,
+  MotivationLayer,
+  PersonaLayer
+} = require('./layers');
+const { decideMotivation } = MotivationLayer;
+const { buildPersonaState } = PersonaLayer;
 
 const IntentDetector = require('../intent/IntentDetector');
 const SocialIntentEngine = require('../intent/SocialIntentEngine');
@@ -74,6 +83,13 @@ async function think(context) {
   const npcProfile = await getNpcProfile(context.npcId, context.npcName);
   context.npc = npcProfile.data;
   context.brain = npcProfile.data;
+  // Se il profilo proviene dal nuovo /api/npcs/generate, ricava prompt/lifeCore
+  if (!context.promptSystem) {
+    context.promptSystem = npcProfile.data?.prompt_system || npcProfile.data?.promptSystem || null;
+  }
+  if (!context.lifeCore && npcProfile.data?.npc_json) {
+    context.lifeCore = npcProfile.data.npc_json;
+  }
   context.npc.preferences = context.npc.preferences || {};
   context.npc.preferences.tone_mode = normalizeToneMode(context.npc.preferences.tone_mode || 'soft');
   context.mediaData = {
@@ -109,8 +125,37 @@ async function think(context) {
   // 2) Analisi del testo/media e intenzioni
   const intentReport = IntentDetector.detect(perception, processedContext);
   const socialIntent = SocialIntentEngine.analyze(processedContext, perception);
-  const emotionalIntent = EmotionalIntentEngine.analyze(perception);
-  const motivation = decideMotivation(intentReport, { wantsMedia: false, type: null }, emotionalIntent);
+  // IMPORTANTE: passa intentReport a EmotionalIntentEngine per rilevare contenuti espliciti/familiari
+  let emotionalIntent = EmotionalIntentEngine.analyze(perception, intentReport);
+
+  // Se family guard, pulisci intents aggressivi/espliciti
+  if (emotionalIntent?.familyGuard) {
+    intentReport.intents = (intentReport.intents || []).filter(
+      (i) => !['aggression', 'explicit_sexual_request', 'spicy_request', 'explicit_request'].includes(i)
+    );
+    intentReport.flags = intentReport.flags || {};
+    intentReport.flags.userWantsExplicitSexualTone = false;
+    intentReport.flags.userWantsExplicitTone = false;
+    processedContext.familyGuard = true;
+  }
+
+  let motivation = decideMotivation(intentReport, { wantsMedia: false, type: null }, emotionalIntent);
+
+  const explicitSex = intentReport.flags?.userWantsExplicitSexualTone === true || intentReport.intents.includes('explicit_sexual_request');
+  const explicitTone = intentReport.flags?.userWantsExplicitTone === true || intentReport.flags?.userWantsMorePlayfulOrSpicy === true;
+
+  if (!processedContext.familyGuard && (explicitSex || explicitTone)) {
+    // Override per richieste esplicite/dominanti
+    emotionalIntent = { emotionalIntent: 'Dominate' };
+    motivation = {
+      primaryIntent: 'explicit_sexual_request',
+      secondaryIntents: intentReport.intents,
+      motivation: 'esaudire_desiderio',
+    };
+    processedContext.emotionOverride = { valence: 0.3, arousal: 0.9, dominance: 0.9 };
+    processedContext.moodOverride = 'hot';
+  }
+
   const personaState = buildPersonaState(processedContext, motivation, emotionalIntent);
   processedContext.intentFlags = intentReport.flags || {};
 
@@ -130,7 +175,8 @@ async function think(context) {
   context.npc.preferences.tone_mode = normalizeToneMode(context.npc.preferences.tone_mode);
 
   // 3) Costruisci prompt e genera con LLM
-  const prompt = PromptBuilder.buildPrompt({
+  const promptOverride = context.promptSystem || context.lifeCore?.prompt_system || context.lifeCore?.promptSystem;
+  const prompt = promptOverride || PromptBuilder.buildPrompt({
     ...processedContext,
     npc: context.npc,
     motivation,
@@ -167,7 +213,25 @@ async function think(context) {
   // =============================================================
   // Debug verbose disabilitato per ridurre il rumore nei log
 
-  const llmResponse = await generate(safeMessages, context.npc?.model_override || null);
+  const explicitMode =
+    intentReport.flags?.userWantsExplicitTone === true ||
+    intentReport.flags?.userWantsMorePlayfulOrSpicy === true ||
+    context.npc.preferences.tone_mode === 'explicit';
+  const explicitSexual =
+    intentReport.flags?.userWantsExplicitSexualTone === true;
+
+  const llmResponse = await generate(
+    safeMessages,
+    context.npc?.model_override || null,
+    explicitMode || explicitSexual
+      ? {
+        explicitMode: explicitSexual ? 'sexual' : true,
+        explicitSexualTone: explicitSexual,
+        userWantsExplicitSexualTone: explicitSexual,
+        userMessage: context.message,
+      }
+      : {}
+  );
   console.log("🧠 Venice:", (llmResponse || '').toString().substring(0, 200));
   const processed = PostProcessor.process(llmResponse, {
     perception,
@@ -203,6 +267,35 @@ async function think(context) {
     intent: motivation.primaryIntent,
     at: Date.now(),
   });
+
+  // ======================================
+  // MEMORY ADAPTATION per contenuti espliciti
+  // ======================================
+  context.npc.memories.user_preferences = context.npc.memories.user_preferences || {};
+
+  if (intentReport.flags?.userWantsExplicitSexualTone === true) {
+    // Memorizza che l'utente gradisce dirty talk e dominanza
+    context.npc.memories.user_preferences.likes_explicit = true;
+    context.npc.memories.user_preferences.explicit_count = (context.npc.memories.user_preferences.explicit_count || 0) + 1;
+    context.npc.memories.user_preferences.last_explicit_at = Date.now();
+
+    // Abbassa il threshold per far scattare esplicito in futuro
+    // Più l'utente usa linguaggio esplicito, più l'NPC diventa propenso a rispondere esplicitamente
+    context.npc.memories.user_preferences.explicit_threshold = Math.max(0.3, 1.0 - (context.npc.memories.user_preferences.explicit_count * 0.1));
+
+    // Memorizza l'episodio esplicito
+    context.npc.memories.episodic.push({
+      description: 'Utente ha usato linguaggio esplicito/dominante',
+      intensity: 'high',
+      type: 'explicit_interaction',
+      at: Date.now(),
+    });
+  }
+
+  // Se l'utente usa linguaggio esplicito frequentemente, imposta il tone_mode su explicit di default
+  if (context.npc.memories.user_preferences.explicit_count > 3) {
+    context.npc.preferences.tone_mode = 'explicit';
+  }
 
   // 5) Micro-evoluzione tratti e XP
   TraitEvolution.evolve(context.npc, {

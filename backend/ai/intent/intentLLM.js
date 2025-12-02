@@ -95,6 +95,7 @@ async function classifyIntent(text, role = 'user') {
   try {
     const reply = await routeLLM(systemPrompt, [], input, null);
     cleaned = (reply || '').toString().trim().toLowerCase();
+    if (cleaned.includes('venice_error')) cleaned = '';
     if (allowed.includes(cleaned)) return cleaned;
     const partial = allowed.find(l => cleaned.includes(l));
     if (partial) return partial;

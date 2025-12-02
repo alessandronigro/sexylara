@@ -15,12 +15,21 @@ async function routeLLM(systemPrompt, history, userMessage, npcModel) {
     { role: "user", content: userMessage }
   ];
 
-  return await veniceSafeCall("meta/meta-llama-3.1-405b-instruct", {
-    prompt: systemPrompt,
-    messages,
-    temperature: 0.7,
-    max_tokens: 500,
-  });
+  try {
+    // Ensure the model includes a version tag to avoid 404 from Replicate
+    const modelName = "meta/meta-llama-3-8b-instruct";
+    const modelWithVersion = modelName.includes(":") ? modelName : `${modelName}:latest`;
+    console.log('LlmRouter: calling veniceSafeCall with model', modelWithVersion);
+    return await veniceSafeCall(modelWithVersion, {
+      messages,
+      temperature: 0.7,
+      max_tokens: 500,
+    });
+  } catch (err) {
+    console.error('⚠️ LlmRouter fallback due to Venice error:', err?.message || err);
+    return null; // let caller/heuristic decide
+  }
 }
 
 module.exports = { routeLLM };
+

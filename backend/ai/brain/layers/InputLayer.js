@@ -29,7 +29,7 @@ function process(context, npcName = '') {
   const normalizedMessage = normalizeText(context.message);
   const metadata = enrichMetadata(context);
   const directMessage = detectAddressed(normalizedMessage, npcName);
-  const { normalizeMediaRequest } = require('../media/inputNormalizer');
+  const { normalizeMediaRequest } = require('../../media/inputNormalizer');
   return {
     ...context,
     message: normalizedMessage,

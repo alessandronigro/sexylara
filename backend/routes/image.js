@@ -8,17 +8,23 @@ const { runReplicateWithLogging } = require('../utils/replicateLogger');
 // ===============================================================
 //  GENERA AVATAR DI BASE (FOCUSSATO SUL VISO)
 // ===============================================================
-async function generateAvatar(prompt, npcId = null, faceImageUrl = null) {
+async function generateAvatar(prompt, npcId = null, faceImageUrl = null, gender = null) {
   const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
   });
 
   try {
+    const genderHint = gender === 'male'
+      ? 'handsome masculine man, male face, male body proportions'
+      : gender === 'female'
+        ? 'beautiful feminine woman, female face, female body proportions'
+        : '';
+
     const output = await replicate.run(
       "konieshadow/fooocus-api:fda927242b1db6affa1ece4f54c37f19b964666bf23b0d06ae2439067cd344a4",
       {
         input: {
-          prompt: `${prompt}, professional portrait, high quality, 8k, photorealistic`,
+          prompt: `${prompt}, ${genderHint}, professional portrait, high quality, 8k, photorealistic`,
           sharpness: 2,
           uov_method: "Disabled",
           image_number: 1,
@@ -75,7 +81,7 @@ async function resolveNpcFaceImage(npc, language = 'en') {
   const prompt = `Portrait photo of ${npc.name || 'the NPC'}, ${gender}, photorealistic`;
 
   try {
-    return await generateAvatar(prompt, npc.id || npc.npc_id || null);
+    return await generateAvatar(prompt, npc.id || npc.npc_id || null, null, npc.gender || npc.appearance?.gender || null);
   } catch (err) {
     console.error('❌ Error generating fallback NPC portrait:', err?.message);
     return null;
@@ -133,7 +139,12 @@ async function generateImage(prompt, npc = null, userId = null, language = 'en',
   const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
   });
-  const enhancedPrompt = prompt;
+  const genderHint = npc?.gender === 'male'
+    ? 'male, masculine body, man, no breasts'
+    : npc?.gender === 'female'
+      ? 'female, feminine body, woman'
+      : '';
+  const enhancedPrompt = genderHint ? `${genderHint}, ${prompt}` : prompt;
 
   // ========== 3️⃣ RECUPERA FACCIA NPC PER FACESWAP ==========
   const faceImage = _options.faceImageUrl || (npc ? await resolveNpcFaceImage(npc, language) : null);
