@@ -226,6 +226,161 @@ router.post('/group/invite', async (req, res) => {
 });
 
 // ===============================================================
+// POST /api/group/invite/user
+// Frontend-compatible endpoint for inviting users
+// ===============================================================
+router.post('/group/invite/user', async (req, res) => {
+  const { groupId, receiverId } = req.body;
+  const senderId = req.headers['x-user-id'];
+
+  if (!senderId) {
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  // Redirect to unified invite endpoint
+  req.body = {
+    groupId,
+    invitedId: receiverId,
+    invitedType: 'user'
+  };
+
+  // Reuse the unified invite logic
+  return router.handle(
+    { ...req, method: 'POST', url: '/group/invite', body: req.body },
+    res
+  );
+});
+
+// ===============================================================
+// POST /api/group/invite/npc
+// Frontend-compatible endpoint for inviting NPCs
+// ===============================================================
+router.post('/group/invite/npc', async (req, res) => {
+  const { groupId, npcId } = req.body;
+  const senderId = req.headers['x-user-id'];
+
+  if (!senderId) {
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  try {
+    // Check permissions
+    const action = 'invite_npc';
+    const hasPermission = await checkPermission(senderId, groupId, action);
+
+    if (!hasPermission) {
+      return res.status(403).json({
+        error: 'Insufficient permissions. Only group owners and admins can invite NPCs.'
+      });
+    }
+
+    // Check if already a member
+    const { data: existingMember } = await supabase
+      .from('group_members')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('member_id', npcId)
+      .eq('member_type', 'npc')
+      .single();
+
+    if (existingMember) {
+      return res.status(409).json({ error: 'NPC already in group' });
+    }
+
+    // Validate NPC exists and belongs to inviter
+    const { data: npc, error: npcError } = await supabase
+      .from('npcs')
+      .select('id, user_id, name')
+      .eq('id', npcId)
+      .single();
+
+    if (npcError || !npc) {
+      return res.status(404).json({ error: 'NPC not found' });
+    }
+
+    if (npc.user_id !== senderId) {
+      return res.status(403).json({ error: 'You can only invite your own NPCs to groups' });
+    }
+
+    // Add NPC directly to group
+    const { error: memberErr } = await supabase
+      .from('group_members')
+      .insert({
+        group_id: groupId,
+        member_id: npcId,
+        member_type: 'npc',
+        npc_id: npcId,
+        role: 'member'
+      });
+
+    if (memberErr) {
+      console.error('Error adding NPC to group:', memberErr);
+      throw memberErr;
+    }
+
+    // Initialize NPC in group
+    await initializeAiInGroup(npcId, groupId);
+
+    return res.json({
+      success: true,
+      added: 'npc',
+      npcId: npcId,
+      npcName: npc.name
+    });
+
+  } catch (error) {
+    console.error('Error inviting NPC:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===============================================================
+// POST /api/group/invite/respond
+// Frontend-compatible endpoint for responding to invites
+// ===============================================================
+router.post('/group/invite/respond', async (req, res) => {
+  const { inviteId, accept } = req.body;
+  const userId = req.headers['x-user-id'];
+
+  if (!userId) {
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  try {
+    if (accept) {
+      await acceptInvite(inviteId, userId);
+      res.json({ success: true, message: 'Invite accepted' });
+    } else {
+      // Decline logic
+      const { data: invite, error: fetchErr } = await supabase
+        .from('group_invites')
+        .select('*')
+        .eq('id', inviteId)
+        .eq('invited_id', userId)
+        .eq('invited_type', 'user')
+        .single();
+
+      if (fetchErr || !invite) {
+        return res.status(404).json({ error: 'Invite not found' });
+      }
+
+      const { error: updateErr } = await supabase
+        .from('group_invites')
+        .update({ status: 'declined' })
+        .eq('id', inviteId);
+
+      if (updateErr) throw updateErr;
+
+      res.json({ success: true, message: 'Invite declined' });
+    }
+  } catch (error) {
+    console.error('Error responding to invite:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// ===============================================================
 // POST /api/group/invite/accept
 // Accetta un invito a un gruppo
 // ===============================================================
