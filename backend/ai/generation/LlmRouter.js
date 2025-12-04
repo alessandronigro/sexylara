@@ -2,6 +2,7 @@ const { veniceSafeCall } = require("./VeniceSafeCall");
 const { sanitizeHistoryForLLM } = require("../../utils/sanitizeHistory");
 
 async function routeLLM(systemPrompt, history, userMessage, npcModel) {
+  const DEFAULT_MODEL = process.env.REPLICATE_LLM_MODEL || "meta/meta-llama-3-8b-instruct:5a6809ca6288247d06daf6365557e5e429063f32a21146b2a807c682652136b8";
   let cleanHistory = [];
   try {
     cleanHistory = sanitizeHistoryForLLM(history || []);
@@ -17,7 +18,7 @@ async function routeLLM(systemPrompt, history, userMessage, npcModel) {
 
   try {
     // Ensure the model includes a version tag to avoid 404 from Replicate
-    const modelName = "meta/meta-llama-3-8b-instruct";
+    const modelName = npcModel || DEFAULT_MODEL;
     const modelWithVersion = modelName.includes(":") ? modelName : `${modelName}:latest`;
     console.log('LlmRouter: calling veniceSafeCall with model', modelWithVersion);
     return await veniceSafeCall(modelWithVersion, {
@@ -32,4 +33,3 @@ async function routeLLM(systemPrompt, history, userMessage, npcModel) {
 }
 
 module.exports = { routeLLM };
-

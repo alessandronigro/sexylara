@@ -22,6 +22,7 @@ const groupRoutes = require('./routes/group');
 const { brainEngine } = require('./ai/brainEngine'); // legacy (potrebbe essere rimosso dopo)
 const AICoreRouter = require('./ai/core/AICoreRouter'); // ✨ AI Core v2.1
 const memoryFlush = require('./ai/scheduler/memoryFlush'); // ✨ Memory scheduler
+const globalScheduler = require('./ai/scheduler/globalScheduler');
 const wsNotificationService = require('./services/wsNotificationService');
 const MediaGenerationService = require('./services/MediaGenerationService');
 const { getUserPhoto } = require('./ai/media/getUserPhoto');
@@ -29,6 +30,7 @@ const { saveUserPhoto } = require('./ai/media/saveUserPhoto');
 const { askPhoto, captions } = require('./ai/language/translations');
 const { detectInvokedNpcId } = require("./ai/engines/GroupBrainEngine");
 const { checkForInitiative } = require('./ai/scheduler/NpcInitiativeEngine');
+const globalScheduler = require('./ai/scheduler/globalScheduler');
 const { classifyIntent } = require('./ai/intent/intentLLM');
 const pendingCouplePhoto = new Map();
 
@@ -141,6 +143,7 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 const { analyzeText } = require('./lib/analyzeUserInput');
 const { getUserPreferences, updateUserMemory } = require("./lib/userMemory");
 const userSockets = new Map();
+let globalSchedulerStarted = false;
 
 function sendNpcStatus(ws, npcId, status, traceId) {
   try {
@@ -154,16 +157,6 @@ function sendNpcStatus(ws, npcId, status, traceId) {
     console.warn('⚠️ Failed to send npc_status:', err?.message);
   }
 }
-
-// Scheduler per iniziative NPC ogni 5 minuti
-setInterval(async () => {
-  try {
-    await checkForInitiative(userSockets);
-  } catch (err) {
-    console.error('❌ NPC initiative scheduler error:', err?.message);
-  }
-}, 5 * 60 * 1000);
-
 
 async function saveMessage({ user_id, session_id, role, type, content, npc_id, recipient_user_id }) {
   const data = { user_id, session_id, role, type, content };
@@ -237,6 +230,11 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     userSockets.delete(userId);
   });
+
+  if (!globalSchedulerStarted) {
+    globalScheduler.start(userSockets, 60 * 1000);
+    globalSchedulerStarted = true;
+  }
 
   ws.on('message', async (msg) => {
     const sessionId = new Date().toISOString().slice(0, 10);

@@ -34,7 +34,7 @@ const couplePhotoRoutes = require('./routes/couplePhoto');
 const contactsRoutes = require('./routes/contacts');
 
 const app = express();
-const port = process.env.PORT || 4001;
+const port = process.env.PORT || 4000;
 
 // Middleware
 app.use(cors());

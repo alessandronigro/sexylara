@@ -106,6 +106,9 @@ async function classifyIntent(text, role = 'user') {
   const fallback = heuristicIntent(text, role);
   if (fallback && allowed.includes(fallback)) return fallback;
 
+  // Se non è chiaro, chiedi conferma (for user role)
+  if (role === 'user') return 'conversation';
+
   return role === 'npc' ? 'npc_send_none' : 'conversation';
 }
 

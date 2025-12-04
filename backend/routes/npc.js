@@ -285,7 +285,7 @@ function parseLifeCore(raw) {
 
 function validateLifeCore(lc) {
     if (!lc || typeof lc !== 'object') return ['LifeCore mancante o non valido'];
-    const requiredKeys = ['identity', 'personality', 'backstory', 'values', 'arc', 'memory', 'preferences', 'media', 'safety'];
+    const requiredKeys = ['identity', 'personality', 'backstory', 'values', 'arc', 'memory', 'preferences', 'media', 'safety', 'time_memory', 'relationship', 'routine_readiness'];
     const errors = [];
     for (const k of requiredKeys) {
         if (lc[k] === undefined || lc[k] === null) {
@@ -316,6 +316,23 @@ function validateLifeCore(lc) {
     if (!lc.identity?.language) {
         errors.push('identity.language mancante');
     }
+    const tm = lc.time_memory || {};
+    if (!Array.isArray(tm.past_events)) {
+        errors.push('time_memory.past_events deve essere un array');
+    }
+    if (!tm.present_context || typeof tm.present_context !== 'object') {
+        errors.push('time_memory.present_context mancante o non valido');
+    }
+    if (!Array.isArray(tm.future_events)) {
+        errors.push('time_memory.future_events deve essere un array');
+    }
+    const rel = lc.relationship || {};
+    if (rel.confidence_level === undefined || Number.isNaN(Number(rel.confidence_level)) || Number(rel.confidence_level) < 0 || Number(rel.confidence_level) > 5) {
+        errors.push('relationship.confidence_level non valido (0-5)');
+    }
+    if (!lc.routine_readiness || typeof lc.routine_readiness !== 'object') {
+        errors.push('routine_readiness mancante o non valido');
+    }
     // Nota: l'eventuale controllo esplicito su termini vietati viene omesso qui
     // per evitare falsi positivi; la sicurezza resta gestita da filtri a monte e LLM.
     return errors;
@@ -343,7 +360,10 @@ Regole di generazione:
 10. Le preferenze devono essere umane, emotive e collegate ai tratti.
 11. La memoria episodica iniziale deve essere vuota.
 12. Lo stile media deve essere definito (avatar_style, voice_profile, aesthetic).
-13. Il JSON deve essere pulito, corretto e senza commenti.
+13. Aggiungi sezione "time_memory" con passato/presente/futuro.
+14. Aggiungi sezione "relationship" con confidence_level (0–5) e ritmo di contatto.
+15. Aggiungi sezione "routine_readiness" con orari preferiti, giorni busy/free e affidabilità memoria.
+16. Il JSON deve essere pulito, corretto e senza commenti.
 
 Template da seguire (rispondi SOLO con JSON):
 {
@@ -368,6 +388,30 @@ Template da seguire (rispondi SOLO con JSON):
   "values": [...],
   "arc": {...},
   "memory": {...},
+  "time_memory": {
+    "past_events": [],
+    "present_context": {
+      "days_since_last_message": 0,
+      "emotional_climate": "neutral",
+      "relationship_level": 0,
+      "last_significant_topic": null
+    },
+    "future_events": []
+  },
+  "relationship": {
+    "confidence_level": 0,
+    "interaction_history_summary": "",
+    "npc_initiative_intensity": "low",
+    "typical_rhythm_of_contact": "weekly"
+  },
+  "routine_readiness": {
+    "preferred_hours": ["morning", "evening"],
+    "busy_days": [],
+    "free_days": [],
+    "recall_propensity": 0.6,
+    "memory_reliability": 0.8,
+    "emotional_recall_intensity": 0.6
+  },
   "preferences": {...},
   "media": {...},
   "safety": {...}
@@ -416,6 +460,16 @@ ${(values || []).join(', ')}
 
 Arco evolutivo:
 ${arc?.path || arc?.goal || 'diventa più emotivo e aperto con l\'utente'}
+
+Relazione e iniziativa:
+- Confidenza attuale: ${lc.relationship?.confidence_level ?? 0}/5
+- Ritmo tipico di contatto: ${lc.relationship?.typical_rhythm_of_contact || 'weekly'}
+- Intensità iniziativa NPC: ${lc.relationship?.npc_initiative_intensity || 'low'}
+
+Memoria temporale:
+- Clima attuale: ${lc.time_memory?.present_context?.emotional_climate || 'neutral'}
+- Ultimo topic rilevante: ${lc.time_memory?.present_context?.last_significant_topic || 'n/d'}
+- Eventi futuri: ${lc.time_memory?.future_events?.length || 0}
 
 REGOLA MASSIMA:
 Rispondi sempre nella lingua indicata in identity.language.

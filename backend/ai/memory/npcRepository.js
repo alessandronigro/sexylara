@@ -1,5 +1,6 @@
 const { supabase } = require('../../lib/supabase');
 const DEFAULT_NPC_TEMPLATE = require('./npcTemplate');
+const { ensureLifeCoreStructure } = require('../learning/LifeCoreTemporalEngine');
 
 const personalityPresets = {
   mysterious: {
@@ -116,7 +117,7 @@ async function getNpcProfile(npcId, fallbackName) {
 
   if (profileRow && profileRow.data) {
     const base = profileRow.data || {};
-    const lifeCore = base.npc_json || base.lifeCore || null;
+    const lifeCore = ensureLifeCoreStructure(base.npc_json || base.lifeCore || {});
     const promptSystem = base.prompt_system || base.promptSystem || null;
     const enriched = { ...base };
     if (promptSystem) enriched.prompt_system = promptSystem;
@@ -148,6 +149,7 @@ async function getNpcProfile(npcId, fallbackName) {
   }
 
   const npc = buildFromGirlfriend(npcRow, evoTraits);
+  npc.npc_json = ensureLifeCoreStructure(npc.npc_json || {});
 
   // Save initial profile if not present
   if (profileErr) {

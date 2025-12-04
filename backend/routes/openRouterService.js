@@ -1,8 +1,8 @@
 // routes/openRouterService.js
-const fetch = require("node-fetch");
 const logToFile = require("../utils/log");
 const { processInteraction } = require("../ai/brainEngine"); // Updated to use consolidated brainEngine
 const { supabase } = require("../lib/supabase");
+const { routeLLM } = require("../ai/generation/LlmRouter");
 const env = process.env.NODE_ENV || 'development';
 
 try {
@@ -135,29 +135,8 @@ IMPORTANT STYLE RULES:
       }
     }
 
-    const response = await fetch(process.env.ADDRESS_VENICE, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.API_VENICE}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.MODEL_VENICE,
-        temperature: 0.95,
-        presence_penalty: 0.8,
-        messages: messages,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (env !== 'production') {
-      console.log("\n\n==================== VENICE RESPONSE (openRouterService) ====================");
-      console.log(JSON.stringify(data, null, 2));
-      console.log("==========================================================================\n\n");
-    }
-    logToFile(JSON.stringify(data));
-    const content = data?.choices?.[0]?.message?.content || "Ops... la mia lingerie si è incastrata sotto la doccia 😘 torno tra poco...";
+    const llmResponse = await routeLLM(systemPrompt, history, userMessage, null);
+    const content = llmResponse || "Ops... la mia lingerie si è incastrata sotto la doccia 😘 torno tra poco...";
 
     const modeMatch = content.match(/\[MODE:(image|video|audio|chat)\]/i);
     const mode = modeMatch ? modeMatch[1].toLowerCase() : "chat";

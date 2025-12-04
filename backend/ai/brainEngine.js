@@ -377,7 +377,23 @@ function buildSentientPrompt() {
   return '';
 }
 
-async function generateNpcInitiativeMessage(npcData, user) {
+function buildInitiativeInstruction(reason, futureEvent) {
+  if (reason === 'future_event' && futureEvent) {
+    return `Invia un messaggio breve e affettuoso ricordando l'evento pianificato (${futureEvent.type}) e mostrando presenza.`;
+  }
+  if (reason === 'emotional_followup') {
+    return 'Invia un messaggio di supporto emotivo, delicato e breve.';
+  }
+  if (reason === 'silence') {
+    return 'Scrivi un check-in leggero perché l’utente è silenzioso da tempo.';
+  }
+  if (reason === 'confidence_ping') {
+    return 'Manda un saluto spontaneo e personale, coerente con una confidenza alta.';
+  }
+  return 'Scrivi tu un messaggio spontaneo all’utente.';
+}
+
+async function generateNpcInitiativeMessage(npcData, user, options = {}) {
   const userId = user?.id || user?.user_id || user;
   if (!npcData?.id || !userId) throw new Error('missing npc or user for initiative');
 
@@ -402,10 +418,11 @@ async function generateNpcInitiativeMessage(npcData, user) {
     history,
     npc,
     userLanguage: user?.language || 'it',
+    lifeCore: npc.npc_json || npc.lifeCore || null,
   };
 
   const processedContext = InputLayer.process(context, npc.name);
-  const memory = MemoryLayer.gatherMemory({ ...context, npc });
+  const memory = MemoryLayer.gatherMemory({ ...context, npc, lifeCore: context.lifeCore });
   const perception = PerceptionLayer.analyze(processedContext);
   const motivation = {
     primaryIntent: 'initiative',
@@ -417,7 +434,13 @@ async function generateNpcInitiativeMessage(npcData, user) {
   const prompt = PromptBuilder.buildPrompt({
     ...processedContext,
     npc,
+    lifeCore: context.lifeCore,
     motivation,
+    initiative: {
+      reason: options.reason || 'initiative',
+      futureEvent: options.futureEvent || null,
+      tone: options.tone,
+    },
     mediaAnalysis: perception.visionAnalysis || perception.audioAnalysis,
     memory,
     history,
@@ -425,12 +448,14 @@ async function generateNpcInitiativeMessage(npcData, user) {
     userLanguage: context.userLanguage || 'it',
   });
 
+  const initiativeInstruction = buildInitiativeInstruction(options.reason, options.futureEvent);
+
   const messagesArray = [
     { role: 'system', content: prompt },
-    { role: 'user', content: 'Scrivi un messaggio spontaneo e breve per l’utente.' },
+    { role: 'user', content: initiativeInstruction },
   ];
 
-  const llmResponse = await generate(messagesArray, npc?.model_override || null);
+  const llmResponse = await generate(messagesArray, npc?.model_override || null, options?.tone === 'intimate' ? { tone: 'intimate' } : {});
 
   return {
     text: (llmResponse || '').trim(),

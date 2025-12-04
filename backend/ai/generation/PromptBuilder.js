@@ -6,6 +6,8 @@ function buildPrompt(context) {
   const promptSystem = context.promptSystem || npc.prompt_system || npc.promptSystem || null;
   const history = context.history || [];
   const userLanguage = context.userLanguage || lifeCore?.identity?.language || "it";
+  const timeContext = context.timeContext || {};
+  const worldContext = context.worldContext || {};
 
   // Se c'è un prompt di sistema personalizzato, usarlo sempre.
   if (promptSystem) {
@@ -17,6 +19,16 @@ function buildPrompt(context) {
   if (lifeCore && lifeCore.identity) {
     const id = lifeCore.identity;
     const persona = lifeCore.personality || {};
+    const tm = lifeCore.time_memory || {};
+    const rel = lifeCore.relationship || {};
+    const groupPersona = lifeCore.groupPersona || {};
+    const world = lifeCore.worldAwareness || {};
+    const patterns = lifeCore.timePatterns || {};
+    const urges = lifeCore.socialUrges || {};
+    const nowBlock = timeContext?.today ? `\n[CONTESTO TEMPO]\ndata: ${timeContext.today} ora: ${timeContext.hour || '?'} (${timeContext.partOfDay || ''})` : '';
+    const worldBlock = worldContext && (worldContext.weather || (worldContext.festivities || []).length || (worldContext.news || []).length)
+      ? `\n[MONDO]\nmeteo: ${worldContext.weather ? JSON.stringify(worldContext.weather) : 'n/d'}\nfestività: ${(worldContext.festivities || []).join(', ') || 'none'}\nnews: ${(worldContext.news || []).slice(0,2).map((n) => n.title || n).join(' | ') || 'none'}`
+      : '';
     identityBlock = `[IDENTITÀ NPC]
 nome: ${id.name || npc.name || 'Sconosciuta'}
 età: ${id.age || 'adult'}
@@ -28,14 +40,33 @@ storia: ${lifeCore.backstory?.summary || lifeCore.backstory?.story || 'sintetica
 valori: ${Array.isArray(lifeCore.values) ? lifeCore.values.join(', ') : 'non specificati'}
 limiti: ${lifeCore.safety ? JSON.stringify(lifeCore.safety) : 'coerenti con sicurezza piattaforma'}
 stile comunicativo: ${persona.stile || 'naturale, coerente con i tratti'}
+[MEMORIA TEMPORALE]
+passato: ${tm.past_events?.length || 0} eventi chiave
+presente: clima ${tm.present_context?.emotional_climate || 'neutral'}, topic recente: ${tm.present_context?.last_significant_topic || 'n/d'}
+futuro: ${tm.future_events?.length || 0} eventi programmati
+[RELAZIONE]
+confidenza: ${rel.confidence_level ?? 0}/5
+ritmo contatto: ${rel.typical_rhythm_of_contact || 'weekly'}
+[GRUPPO]
+ruolo gruppo: ${groupPersona.role || 'supporter'}
+proattività: ${groupPersona.proactivity || 'medium'}
+[MONDO E TEMPO]
+world awareness: ${world.sensitivity || 'light'}
+time patterns energia (m/a/s): ${patterns.morning_energy ?? '?'} / ${patterns.afternoon_energy ?? '?'} / ${patterns.evening_energy ?? '?'}
+social urges: baseline ${urges.baseline ?? 0} picchi: ${(urges.peaks_at || []).join(', ') || 'none'}${nowBlock}${worldBlock}
 `;
     console.log('[PromptBuilder] Using NPC LifeCore');
   }
+
+  const initiativeBlock = context.initiative
+    ? `\n[INIZIATIVA]\nreason: ${context.initiative.reason || 'initiative'}\nfuture_event: ${context.initiative.futureEvent?.userMessageExtract || context.initiative.futureEvent?.type || 'nessuno'}` 
+    : '';
 
   // Fallback system prompt minimale
   const fallbackSystem = `Sei un personaggio con una sua vita coerente e non un assistente. Mantieni tono caldo. Evita contenuti espliciti. Usa frasi brevi.
 
 ${identityBlock}
+${initiativeBlock}
 
 LINGUA: scrivi sempre in ${userLanguage}.
 

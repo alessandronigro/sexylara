@@ -9,6 +9,31 @@ const { detectLanguage } = require('../language/detectLanguage');
 const InputLayer = require('../brain/layers/InputLayer');
 const PerceptionLayer = require('../brain/layers/PerceptionLayer');
 const MemoryLayer = require('../brain/layers/MemoryLayer');
+const { ensureLifeCoreStructure } = require('../learning/LifeCoreTemporalEngine');
+const WorldContextAdapter = require('../world/WorldContextAdapter');
+
+function buildTimeContext(now = new Date()) {
+  const hour = now.getHours();
+  const partOfDay = hour < 6 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  const dow = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][now.getDay()];
+  return {
+    now: now.toISOString(),
+    hour,
+    partOfDay,
+    dayOfWeek: dow,
+    isWeekend: dow === 'saturday' || dow === 'sunday',
+    today: now.toISOString().slice(0, 10),
+  };
+}
+
+async function buildWorldContext(user) {
+  const [weather, news, festivities] = await Promise.all([
+    WorldContextAdapter.getWeather(user).catch(() => null),
+    WorldContextAdapter.getNews().catch(() => []),
+    WorldContextAdapter.getFestivities().catch(() => []),
+  ]);
+  return { weather, news, festivities };
+}
 
 /**
  * Build context completo per BrainEngine
@@ -59,6 +84,11 @@ async function build(params) {
       lifeCore = profile.data.npc_json || null;
       promptSystem = profile.data.prompt_system || null;
     }
+  }
+
+  lifeCore = ensureLifeCoreStructure(lifeCore || {});
+  if (npcData && !npcData.npc_json) {
+    npcData.npc_json = lifeCore;
   }
 
   // ======================================
@@ -114,10 +144,13 @@ async function build(params) {
   // ======================================
   // 5. MEMORY
   // ======================================
+  const worldContext = await buildWorldContext(userData);
+
   const memory = MemoryLayer.gatherMemory({
     userId,
     npcId,
     npc: npcData,
+    lifeCore,
     groupId,
     history: conversationHistory
   });
@@ -203,6 +236,8 @@ ${baseSystem}
     groupContext,
     mediaContext,
     preferences,
+    timeContext: buildTimeContext(),
+    worldContext,
 
     // Metadata
     metadata: {

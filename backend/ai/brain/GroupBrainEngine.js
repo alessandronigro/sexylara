@@ -4,6 +4,8 @@ const PostProcessor = require('../generation/PostProcessor');
 const { sanitizeHistoryForLLM } = require('../../utils/sanitizeHistory');
 const { buildSceneContext } = require('./SceneEngine');
 const { selectResponders } = require('./GroupTurnEngine');
+const { evaluateGroupInitiative } = require('../group/GroupInitiativeEngine');
+const { addGossip } = require('../group/GroupMemoryStore');
 
 function normalizeHistory(history = [], npcId) {
   return history.map((h) => {
@@ -23,6 +25,8 @@ async function generateForNpc(npc, context, scene) {
     userLanguage,
     history: safeHistory,
     mediaAnalysis: context.mediaAnalysis,
+    timeContext: context.timeContext,
+    worldContext: context.worldContext,
   });
 
   const messagesArray = [
@@ -60,6 +64,16 @@ async function think(context) {
     const reply = await generateForNpc(npc, context, scene);
     if (reply && reply.text) replies.push(reply);
   }
+
+  // Group initiative/gossip scaffold
+  const initiative = await evaluateGroupInitiative({ ...context, scene });
+  if (initiative.gossip && initiative.gossip.length && context.groupId) {
+    initiative.gossip.forEach((g) => addGossip(context.groupId, g));
+  }
+  if (initiative.responses && initiative.responses.length) {
+    replies.push(...initiative.responses);
+  }
+
   if (!replies.length) {
     console.warn('[GroupBrainEngine] No replies generated');
   }

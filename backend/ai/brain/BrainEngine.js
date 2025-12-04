@@ -27,6 +27,8 @@ const TraitEvolution = require('../learning/TraitEvolutionEngine'); // micro-evo
 const ExperienceEngine = require('../learning/ExperienceEngine'); // XP e livelli
 const SocialGraph = require('../learning/SocialGraphEngine'); // relazioni di gruppo
 const MemoryConsolidation = require('../learning/MemoryConsolidationEngine'); // long-term summary
+const RelationshipEngine = require('../relationship/RelationshipEngine');
+const LifeCoreTemporalEngine = require('../learning/LifeCoreTemporalEngine'); // time memory + relationship dynamics
 
 // Supabase storage per il cervello NPC (JSONB in npc_profiles)
 const { getNpcProfile, updateNpcProfile } = require('../memory/npcRepository');
@@ -119,7 +121,6 @@ async function think(context) {
   const npcJson = context.npc;
   const processedContext = InputLayer.process(context, npcJson.name);
   StateLayer.loadState(npcJson, context.groupId); // state reserved for future use
-  const memory = MemoryLayer.gatherMemory(context);
   const perception = PerceptionLayer.analyze(processedContext);
 
   // 2) Analisi del testo/media e intenzioni
@@ -127,6 +128,20 @@ async function think(context) {
   const socialIntent = SocialIntentEngine.analyze(processedContext, perception);
   // IMPORTANTE: passa intentReport a EmotionalIntentEngine per rilevare contenuti espliciti/familiari
   let emotionalIntent = EmotionalIntentEngine.analyze(perception, intentReport);
+
+  // 2b) Aggiorna LifeCore (time memory, relationship, future events)
+  const temporalUpdate = LifeCoreTemporalEngine.updateFromInteraction({
+    lifeCore: context.lifeCore || context.npc?.npc_json || context.npc?.lifeCore,
+    message: context.message,
+    perception,
+    intentReport,
+    history: context.history,
+    now: Date.now(),
+  });
+  context.lifeCore = temporalUpdate.lifeCore;
+  context.npc.npc_json = temporalUpdate.lifeCore;
+  context.temporalSignals = temporalUpdate.signals;
+  const memory = MemoryLayer.gatherMemory({ ...context, lifeCore: temporalUpdate.lifeCore });
 
   // Se family guard, pulisci intents aggressivi/espliciti
   if (emotionalIntent?.familyGuard) {
@@ -179,6 +194,9 @@ async function think(context) {
   const prompt = promptOverride || PromptBuilder.buildPrompt({
     ...processedContext,
     npc: context.npc,
+    lifeCore: context.lifeCore,
+    timeContext: context.timeContext,
+    worldContext: context.worldContext,
     motivation,
     mediaAnalysis: perception.visionAnalysis || perception.audioAnalysis,
     memory,
@@ -316,6 +334,13 @@ async function think(context) {
       weight: xp.xp_total ? xp.xp_total / 100 : xp.total / 100,
     },
   });
+
+  // Relationship vector update (npc <-> user)
+  RelationshipEngine.update(context.lifeCore, {
+    perception,
+    intents: intentReport.intents,
+  });
+  context.npc.npc_json = context.lifeCore;
 
   const consolidatedNpc = MemoryConsolidation.consolidate(
     context.npc,

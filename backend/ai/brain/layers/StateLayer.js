@@ -1,4 +1,5 @@
 function loadState(npcJson, groupId = null) {
+  const lifeCore = npcJson?.npc_json || npcJson?.lifeCore || {};
   const groupState = groupId
     ? { id: groupId, harmony: 0.7, tensions: [] }
     : null;
@@ -13,7 +14,7 @@ function loadState(npcJson, groupId = null) {
       arousal: 0.5,
       dominance: 0.5,
     },
-    relationship: npcJson?.relationship_with_user ?? {},
+    relationship: lifeCore.relationship || npcJson?.relationship_with_user || {},
   };
 }
 

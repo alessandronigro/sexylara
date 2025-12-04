@@ -1,7 +1,22 @@
 #!/bin/bash
 # Configure Apache as reverse proxy for backend
 
-ssh root@45.85.146.77 << 'ENDSSH'
+VPS_HOST="45.85.146.77"
+VPS_USER="root"
+SSH_PASS="${SSH_PASS:-}"
+SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+if [[ -n "$SSH_PASS" ]]; then
+    if ! command -v sshpass >/dev/null 2>&1; then
+        echo "Error: sshpass not found. Install it or use SSH keys."
+        exit 1
+    fi
+    SSH_CMD="sshpass -p $SSH_PASS ssh $SSH_OPTS $VPS_USER@$VPS_HOST"
+else
+    SSH_CMD="ssh $SSH_OPTS $VPS_USER@$VPS_HOST"
+fi
+
+$SSH_CMD << 'ENDSSH'
 
 # Enable required Apache modules
 a2enmod proxy
@@ -46,10 +61,10 @@ cat > /etc/apache2/sites-available/thril.me.conf << 'EOF'
         Require all granted
     </Directory>
     
-    # API Proxy (port 4000)
+    # API Proxy (port 5000)
     ProxyPreserveHost On
-    ProxyPass /api http://localhost:4000/api
-    ProxyPassReverse /api http://localhost:4000/api
+    ProxyPass /api http://localhost:5000/api
+    ProxyPassReverse /api http://localhost:5000/api
     
     # WebSocket Proxy (port 5001) - explicit ws scheme and query support
     ProxyPass /ws ws://localhost:5001/ws retry=0

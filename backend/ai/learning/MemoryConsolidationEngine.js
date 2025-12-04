@@ -137,6 +137,24 @@ async function consolidateNpcMemories(npcId, events) {
       });
     }
 
+    if (event.type === 'world_event') {
+      memories.episodic.push({
+        description: `World: ${event.description || event.metadata?.title || 'evento'}`,
+        intensity: event.intensity || 'medium',
+        type: 'world_event',
+        at: event.timestamp,
+      });
+    }
+
+    if (event.type === 'gossip') {
+      memories.episodic.push({
+        description: `Gossip: ${event.description || ''}`,
+        intensity: event.intensity || 'low',
+        type: 'gossip',
+        at: event.timestamp,
+      });
+    }
+
     if (event.type === 'media') {
       memories.media.push({
         ...event.metadata,

@@ -57,23 +57,54 @@ async function veniceSafeCall(model, input) {
     };
 
     // ============ CHIAMATA STREAMING REPLICATE ============
+    const fallbackModel = process.env.REPLICATE_LLM_MODEL || "meta/meta-llama-3-8b-instruct:5a6809ca6288247d06daf6365557e5e429063f32a21146b2a807c682652136b8";
+    const candidates = [];
+    if (fallbackModel) candidates.push(fallbackModel);
+    if (fallbackModel && !fallbackModel.includes(":")) candidates.push(`${fallbackModel}:latest`);
+    candidates.push(model);
+    if (model && !model.includes(":")) candidates.push(`${model}:latest`);
+
     let output = "";
-    try {
-      const stream = await replicate.stream(model, { input: payload });
-      for await (const event of stream) {
-        if (typeof event === "string") {
-          output += event;
-        } else if (event?.output) {
-          output += Array.isArray(event.output) ? event.output.join("") : String(event.output);
+    let lastErr = null;
+    for (const candidate of candidates) {
+      try {
+        let buffer = "";
+        const stream = await replicate.stream(candidate, { input: payload });
+        for await (const event of stream) {
+          if (typeof event === "string") {
+            buffer += event;
+          } else if (event?.output) {
+            buffer += Array.isArray(event.output) ? event.output.join("") : String(event.output);
+          }
+        }
+        output = buffer;
+        console.log(`[VeniceSafeCall] model ok: ${candidate}`);
+        break;
+      } catch (streamErr) {
+        lastErr = streamErr;
+        const status = streamErr?.response?.status || streamErr?.status;
+        console.warn("⚠️ VeniceSafeCall stream fallback:", streamErr?.message || streamErr, 'status:', status, 'model:', candidate);
+        try {
+          const res = await replicate.run(candidate, { input: payload });
+          if (Array.isArray(res)) output = res.join("");
+          else if (typeof res === "string") output = res;
+          else if (res?.output) output = Array.isArray(res.output) ? res.output.join("") : String(res.output);
+          else output = String(res || "");
+          console.log(`[VeniceSafeCall] run fallback ok: ${candidate}`);
+          break;
+        } catch (runErr) {
+          lastErr = runErr;
+          const runStatus = runErr?.response?.status || runErr?.status;
+          console.warn("⚠️ VeniceSafeCall run failed:", runErr?.message || runErr, 'status:', runStatus, 'model:', candidate);
+          if (runStatus !== 404 && runStatus !== 422) {
+            throw runErr;
+          }
         }
       }
-    } catch (streamErr) {
-      console.warn("⚠️ VeniceSafeCall stream fallback:", streamErr?.message || streamErr);
-      const res = await replicate.run(model, { input: payload });
-      if (Array.isArray(res)) output = res.join("");
-      else if (typeof res === "string") output = res;
-      else if (res?.output) output = Array.isArray(res.output) ? res.output.join("") : String(res.output);
-      else output = String(res || "");
+    }
+
+    if (!output && lastErr) {
+      throw lastErr;
     }
 
     return output.trim() || "[EMPTY_RESPONSE]";

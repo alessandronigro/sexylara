@@ -1,59 +1,92 @@
 #!/usr/bin/env bash
 
-# ------------------------------------------------------------
-# Deploy script for Sexylara backend on a VPS
-# ------------------------------------------------------------
-# This script assumes the following:
-#   • The project lives at /Applications/wwwroot/sexylara
-#   • Node.js (>=18) and npm are installed on the VPS
-#   • pm2 is installed globally (`npm i -g pm2`) for process management
-#   • You have a valid REPLICATE_API_KEY set in the environment
-#   • SSH access and proper permissions to the project directory
-# ------------------------------------------------------------
+# Deploy remoto su VPS con Docker (build+run sul VPS)
+# Default: host 45.85.146.77, user root, branch master, path /root/sexylara
 
 set -euo pipefail
 
-# ---------- Configuration ----------
-PROJECT_ROOT="/Applications/wwwroot/sexylara"
-APP_NAME="sexylara-backend"
-PM2_PROCESS_NAME="sexylara"
-# Branch to deploy – change if you use a different branch
-GIT_BRANCH="main"
-# ------------------------------------------------------------
+# ---------- Config overridabili via env ----------
+VPS_HOST="${VPS_HOST:-45.85.146.77}"
+VPS_USER="${VPS_USER:-root}"
+# Opzioni di auth: SSH_PASS (usa sshpass) oppure SSH_KEY (path); altrimenti agent/default.
+SSH_PASS="${SSH_PASS:-}"
+SSH_KEY="${SSH_KEY:-}"
+
+REMOTE_PROJECT_ROOT="${REMOTE_PROJECT_ROOT:-/root/sexylara}"
+GIT_BRANCH="${GIT_BRANCH:-master}"
+DOCKER_IMAGE="${DOCKER_IMAGE:-sexylara-backend:latest}"
+DOCKER_CONTAINER="${DOCKER_CONTAINER:-sexylara-backend}"
+ENV_FILE="${ENV_FILE:-.env}"
+# -------------------------------------------------
 
 echo "--- Deploy started at $(date)"
+echo "Target: ${VPS_USER}@${VPS_HOST} | branch: ${GIT_BRANCH} | path: ${REMOTE_PROJECT_ROOT}"
 
-# 1️⃣ Ensure we are in the project directory
-cd "$PROJECT_ROOT"
-
-# 2️⃣ Pull latest code from git
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "Fetching latest code from git..."
-  git fetch origin
-  git checkout $GIT_BRANCH
-  git reset --hard origin/$GIT_BRANCH
+# Costruisci comando SSH
+SSH_BASE_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+if [[ -n "$SSH_KEY" ]]; then
+  SSH_CMD=(ssh $SSH_BASE_OPTS -i "$SSH_KEY" "${VPS_USER}@${VPS_HOST}")
+elif [[ -n "$SSH_PASS" ]]; then
+  if ! command -v sshpass >/dev/null 2>&1; then
+    echo "Error: sshpass non presente. Installa sshpass o usa SSH_KEY/agent."
+    exit 1
+  fi
+  SSH_CMD=(sshpass -p "$SSH_PASS" ssh $SSH_BASE_OPTS "${VPS_USER}@${VPS_HOST}")
 else
-  echo "Error: $PROJECT_ROOT is not a git repository. Exiting."
-  exit 1
+  SSH_CMD=(ssh $SSH_BASE_OPTS "${VPS_USER}@${VPS_HOST}")
 fi
 
-# 3️⃣ Install / update npm dependencies
-echo "Installing npm dependencies..."
-npm ci
+"${SSH_CMD[@]}" bash -s <<REMOTESCRIPT
+set -euo pipefail
+PROJECT_ROOT="${REMOTE_PROJECT_ROOT}"
+BRANCH="${GIT_BRANCH}"
+IMG="${DOCKER_IMAGE}"
+CTR="${DOCKER_CONTAINER}"
+ENVF="${ENV_FILE}"
 
-# 4️⃣ Build step (uncomment if needed)
-# npm run build
+echo "[VPS] Navigating to project root: \$PROJECT_ROOT"
+cd "\$PROJECT_ROOT"
 
-# 5️⃣ Restart or start the application with pm2
-if pm2 list | grep -q "$PM2_PROCESS_NAME"; then
-  echo "Restarting existing pm2 process…"
-  pm2 restart "$PM2_PROCESS_NAME"
-else
-  echo "Starting new pm2 process…"
-  pm2 start "npm" --name "$PM2_PROCESS_NAME" -- run dev
-fi
+echo "[VPS] Stashing local changes and cleaning untracked files"
+git add -A
+git stash
+git clean -fd
 
-# 6️⃣ Save pm2 process list for auto‑restart on server reboot
-pm2 save
+echo "[VPS] Fetching and resetting to branch: \$BRANCH"
+git fetch origin
+git checkout "\$BRANCH"
+git reset --hard "origin/\$BRANCH"
 
-echo "--- Deploy completed successfully at $(date)"
+echo "[VPS] Navigating to backend directory"
+cd "\$PROJECT_ROOT/backend"
+
+echo "[VPS] Building Docker image: \$IMG"
+docker build -t "\$IMG" .
+
+echo "[VPS] Stopping and removing old containers"
+docker stop sexylara sexylara-backend 2>/dev/null || true
+docker rm sexylara sexylara-backend 2>/dev/null || true
+
+echo "[VPS] Starting new container: \$CTR"
+docker run -d \\
+  --name "\$CTR" \\
+  -p 5000:4000 \\
+  -p 5001:5001 \\
+  --env-file "\$PROJECT_ROOT/backend/\$ENVF" \\
+  "\$IMG"
+
+echo "[VPS] Waiting for container to start..."
+sleep 3
+
+echo "[VPS] Container status:"
+docker ps --filter "name=\$CTR" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+echo "[VPS] Recent logs:"
+docker logs "\$CTR" --tail 30
+REMOTESCRIPT
+
+echo "--- Deploy completed at $(date)"
+echo ""
+echo "✅ Deploy completato! Verifica i log con:"
+echo "   ssh ${VPS_USER}@${VPS_HOST} 'docker logs -f ${DOCKER_CONTAINER}'"
+

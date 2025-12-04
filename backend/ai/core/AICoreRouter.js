@@ -6,7 +6,7 @@
 
 const ContextBuilder = require('./ContextBuilder');
 const { think } = require('../brain/BrainEngine');
-const { thinkGroup } = require('../engines/GroupBrainEngine');
+const { think: thinkGroup } = require('../brain/GroupBrainEngine');
 const { getNpcProfile } = require('../memory/npcRepository');
 const { supabase } = require('../../lib/supabase');
 
