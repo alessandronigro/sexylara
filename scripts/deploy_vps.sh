@@ -17,6 +17,10 @@ GIT_BRANCH="${GIT_BRANCH:-master}"
 DOCKER_IMAGE="${DOCKER_IMAGE:-sexylara-backend:latest}"
 DOCKER_CONTAINER="${DOCKER_CONTAINER:-sexylara-backend}"
 ENV_FILE="${ENV_FILE:-.env}"
+
+# Calcola path assoluti locali
+SCRIPT_DIR="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
+LOCAL_PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # -------------------------------------------------
 
 echo "--- Deploy started at $(date)"
@@ -39,8 +43,8 @@ else
   SCP_CMD=(scp $SSH_BASE_OPTS)
 fi
 
-echo "[Local] Uploading env file: backend/$ENV_FILE -> $REMOTE_PROJECT_ROOT/backend/$ENV_FILE"
-"${SCP_CMD[@]}" "backend/$ENV_FILE" "${VPS_USER}@${VPS_HOST}:${REMOTE_PROJECT_ROOT}/backend/$ENV_FILE"
+echo "[Local] Uploading env file: $LOCAL_PROJECT_ROOT/backend/$ENV_FILE -> $REMOTE_PROJECT_ROOT/backend/$ENV_FILE"
+"${SCP_CMD[@]}" "$LOCAL_PROJECT_ROOT/backend/$ENV_FILE" "${VPS_USER}@${VPS_HOST}:${REMOTE_PROJECT_ROOT}/backend/$ENV_FILE"
 
 "${SSH_CMD[@]}" bash -s <<REMOTESCRIPT
 set -euo pipefail
