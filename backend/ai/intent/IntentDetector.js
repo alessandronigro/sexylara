@@ -70,6 +70,7 @@ const dirtyTalkTriggers = [
 function detect(perception, context) {
   const text = (context.message || '').toLowerCase();
   const intents = [];
+  const markers = perception?.textAnalysis?.markers || {};
 
   // ======================================
   // FLAGS POTENZIATI
@@ -128,6 +129,25 @@ function detect(perception, context) {
     if (flags.isSubmissive) intents.push('submission');
     if (flags.isEroticInsult) intents.push('aggression');
     if (flags.isDirtyTalk) intents.push('dirty_talk');
+  }
+
+  // ======================================
+  // MARCATORI PER LIFESTREAM/LIFECORE
+  // ======================================
+  const personalInfoRegex = /(mi chiamo|sono [a-zà-ú]+|ho \d{1,2} anni|vengo da|sono di|lavoro come|faccio il|mia famiglia|mio padre|mia madre|mio fratello|mia sorella)/i;
+  const desireRegex = /(voglio|vorrei|mi piacerebbe|preferirei|desidero|ti va se|possiamo|potremmo|mi andrebbe)/i;
+  const futurePlanRegex = /(domani|dopodomani|poi|piu tardi|più tardi|la prossima volta|prossima settimana|in futuro|devo fare|ho in programma|promemoria|tra \\d+ giorni|tra \\d+ ore|fra \\d+ giorni|fra \\d+ ore)/i;
+  const relationshipRegex = /(ti amo|ti voglio bene|mi manchi|nostro rapporto|noi due|insieme|fidanzat[oa]|coppia|relazione)/i;
+  const emotionRegex = /(felice|triste|arrabbiat[oa]|ansios[oa]|preoccupat[oa]|deluso|entusiasta|content[oa]|disperat[oa])/i;
+
+  markers.personal_info = markers.personal_info || personalInfoRegex.test(text);
+  markers.desire = markers.desire || desireRegex.test(text);
+  markers.future_plan = markers.future_plan || futurePlanRegex.test(text);
+  markers.relationship = markers.relationship || relationshipRegex.test(text);
+  markers.emotion = markers.emotion || emotionRegex.test(text) || perception?.textAnalysis?.sentiment !== 'neutral';
+
+  if (perception?.textAnalysis) {
+    perception.textAnalysis.markers = markers;
   }
 
   return {

@@ -55,9 +55,33 @@ function detectTypeAndPlan(text) {
   return { type: 'general', plan: 'Promemoria di cura e presenza' };
 }
 
+function hasFutureKeyword(text) {
+  return [
+    'domani',
+    'dopodomani',
+    'poi',
+    'più tardi',
+    'piu tardi',
+    'la prossima volta',
+    'prossima volta',
+    'in futuro',
+    'voglio',
+    'vorrei',
+    'devo fare',
+    'ho in programma',
+    'promemoria',
+    'tra ',
+    'fra ',
+    'prossima settimana',
+    'settimana prossima',
+  ].some((kw) => text.includes(kw));
+}
+
 function parse(message, referenceTs = Date.now(), sentiment = 'neutral') {
   if (!message) return [];
   const text = message.toLowerCase();
+  if (!hasFutureKeyword(text)) return [];
+
   const base = new Date(referenceTs);
   const events = [];
   const timeHint = detectTimeHint(text);

@@ -20,6 +20,11 @@ if (global.__AUTO_FUNCTION_LOGGER__) {
     console.log('[fn-log] Function logging disabled via env.');
   } else {
     const backendRoot = path.resolve(__dirname, '..');
+    const suppressedLabels = new Set([
+      'ai/learning/MemoryConsolidationEngine.js::getQueueSize',
+      'ai/memory/npcRepository.js::updateNpcProfile',
+      'ai/scheduler/NpcInitiativeEngine.js::checkForInitiative',
+    ]);
     const wrappedFns = new WeakSet();
     const wrappedExports = new WeakSet();
 
@@ -68,7 +73,9 @@ if (global.__AUTO_FUNCTION_LOGGER__) {
       const wrapped = new Proxy(fn, {
         apply(target, thisArg, argArray) {
           try {
-            console.log(`[fn] ${label}(${formatArgs(argArray)})`);
+            if (!suppressedLabels.has(label)) {
+              console.log(`[fn] ${label}(${formatArgs(argArray)})`);
+            }
           } catch (err) {
             // best-effort logging; never break the app
           }
@@ -76,7 +83,9 @@ if (global.__AUTO_FUNCTION_LOGGER__) {
         },
         construct(target, argArray, newTarget) {
           try {
-            console.log(`[fn:new] ${label}(${formatArgs(argArray)})`);
+            if (!suppressedLabels.has(label)) {
+              console.log(`[fn:new] ${label}(${formatArgs(argArray)})`);
+            }
           } catch (err) {
             // best-effort logging; never break the app
           }

@@ -328,12 +328,18 @@ app.post('/api/photos/comment', async (req, res) => {
         Descrizione dell'immagine: "${imageDescription}".
         Nome file originale: "${filename || 'sconosciuto'}".
         
-        Commenta questa foto in base alla descrizione fornita. Sii naturale, come se la stessi guardando.`;
+        Commenta questa foto in base alla descrizione fornita con un breve pensiero naturale (massimo 2 frasi, entro ~200 caratteri). Non descrivere tutti i dettagli, limita il commento all'impressione principale.`;
 
         let { type, output } = await generateChatReply(prompt, npc ? npc.tone : userPrefs.tone, npc, userPrefs.memory);
+        // Troncatura hard per evitare overflow in frontend e per evitare vuoti
         if (!output || output.trim() === '') {
             output = 'Wow, che bella foto! 😍';
+        } else if (output.length > 240) {
+            output = `${output.slice(0, 240).trim()}…`;
         }
+        try {
+            logToFile(`[api/photos/comment] outputLen=${(output || '').length} type=${type || 'chat'} npc=${npcId || 'none'}`);
+        } catch (e) {}
 
         const sessionId = new Date().toISOString().slice(0, 10);
         const { data: userMessage, error: userError } = await supabase

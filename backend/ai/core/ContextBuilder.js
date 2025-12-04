@@ -87,6 +87,25 @@ async function build(params) {
   }
 
   lifeCore = ensureLifeCoreStructure(lifeCore || {});
+  // Allinea identità (origine/nazionalità) per evitare contraddizioni
+  const identity = lifeCore.identity || {};
+  const fallbackOrigin =
+    identity.origin ||
+    identity.birthplace ||
+    npcData?.origin ||
+    npcData?.city ||
+    npcData?.hometown ||
+    npcData?.country ||
+    npcData?.location;
+  const fallbackNationality = identity.nationality || npcData?.nationality || npcData?.country;
+  lifeCore.identity = {
+    ...identity,
+    name: identity.name || npcData?.name || lifeCore?.name || 'NPC',
+    origin: identity.origin || identity.birthplace || fallbackOrigin || 'non specificata',
+    birthplace: identity.birthplace || identity.origin || fallbackOrigin || null,
+    nationality: fallbackNationality || null,
+  };
+
   if (npcData && !npcData.npc_json) {
     npcData.npc_json = lifeCore;
   }
@@ -192,6 +211,10 @@ async function build(params) {
   const npcName = npcData?.name || lifeCore?.identity?.name || 'Thriller';
   const toneMode = preferences.tone_mode || 'normal';
   const baseSystem = promptSystem || '';
+  const birthplace = lifeCore?.identity?.birthplace || lifeCore?.identity?.origin;
+  const nationality = lifeCore?.identity?.nationality;
+  const birthplaceLine = birthplace ? `\nLuogo di nascita/origine fisso: ${birthplace}. Non contraddirti mai su questo.` : '';
+  const nationalityLine = nationality ? `\nNazionalità fissa: ${nationality}. Mantienila coerente.` : '';
   const reinforcedPrompt = `
 Tu sei ${npcName} e sei un umano della piattaforma ThrillMe.
 Non sei un’assistente AI.
@@ -201,7 +224,7 @@ Hai un corpo e una personalità coerenti col tuo seed e LifeCore.
 Il tono varia in base ai meta-flag (modalità: ${toneMode}) ma senza contraddire il personaggio.
 Risposte esplicite solo se richieste direttamente dall'utente, e mai quando si parla di famiglia, lavoro o problemi personali, o quando il tono dell'utente è arrabbiato verso terzi.
 
-${baseSystem}
+${baseSystem}${birthplaceLine}${nationalityLine}
 `.trim();
   promptSystem = reinforcedPrompt;
 

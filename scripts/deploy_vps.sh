@@ -22,19 +22,25 @@ ENV_FILE="${ENV_FILE:-.env}"
 echo "--- Deploy started at $(date)"
 echo "Target: ${VPS_USER}@${VPS_HOST} | branch: ${GIT_BRANCH} | path: ${REMOTE_PROJECT_ROOT}"
 
-# Costruisci comando SSH
+# Costruisci comando SSH e SCP
 SSH_BASE_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
 if [[ -n "$SSH_KEY" ]]; then
   SSH_CMD=(ssh $SSH_BASE_OPTS -i "$SSH_KEY" "${VPS_USER}@${VPS_HOST}")
+  SCP_CMD=(scp $SSH_BASE_OPTS -i "$SSH_KEY")
 elif [[ -n "$SSH_PASS" ]]; then
   if ! command -v sshpass >/dev/null 2>&1; then
     echo "Error: sshpass non presente. Installa sshpass o usa SSH_KEY/agent."
     exit 1
   fi
   SSH_CMD=(sshpass -p "$SSH_PASS" ssh $SSH_BASE_OPTS "${VPS_USER}@${VPS_HOST}")
+  SCP_CMD=(sshpass -p "$SSH_PASS" scp $SSH_BASE_OPTS)
 else
   SSH_CMD=(ssh $SSH_BASE_OPTS "${VPS_USER}@${VPS_HOST}")
+  SCP_CMD=(scp $SSH_BASE_OPTS)
 fi
+
+echo "[Local] Uploading env file: backend/$ENV_FILE -> $REMOTE_PROJECT_ROOT/backend/$ENV_FILE"
+"${SCP_CMD[@]}" "backend/$ENV_FILE" "${VPS_USER}@${VPS_HOST}:${REMOTE_PROJECT_ROOT}/backend/$ENV_FILE"
 
 "${SSH_CMD[@]}" bash -s <<REMOTESCRIPT
 set -euo pipefail
@@ -89,4 +95,3 @@ echo "--- Deploy completed at $(date)"
 echo ""
 echo "✅ Deploy completato! Verifica i log con:"
 echo "   ssh ${VPS_USER}@${VPS_HOST} 'docker logs -f ${DOCKER_CONTAINER}'"
-

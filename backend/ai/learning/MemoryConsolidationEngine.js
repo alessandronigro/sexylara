@@ -31,6 +31,14 @@ function queueMemoryEvent(event) {
     console.warn('⚠️ MemoryConsolidation: Invalid event, skipping', event);
     return;
   }
+  if (!description || description.trim().length < 8) {
+    console.warn('⚠️ MemoryConsolidation: Empty/short description, skipping');
+    return;
+  }
+  const descLower = description.toLowerCase();
+  if (type === 'mood' || descLower.startsWith('mood:')) {
+    return;
+  }
 
   memoryQueue.push({
     type,
@@ -229,12 +237,22 @@ function consolidate(npcJson, summary = '') {
   if (summary) {
     npcJson.memories.long_term_summary = summary;
   }
+  const npcId = npcJson.id || npcJson.npc_id;
+  const userId = npcJson.user_id || npcJson.owner_id;
+  if (!npcId || !userId) {
+    console.warn('⚠️ MemoryConsolidation: missing npcId/userId, skipping queue');
+    return npcJson;
+  }
+  const desc = summary || 'interazione';
+  if (desc.trim().length < 8 || desc.toLowerCase().startsWith('mood:')) {
+    return npcJson;
+  }
   // Queue a minimal event for async consolidation
   queueMemoryEvent({
     type: 'episodic',
-    npcId: npcJson.id || npcJson.npc_id,
-    userId: npcJson.user_id || npcJson.owner_id,
-    description: summary || 'interazione',
+    npcId,
+    userId,
+    description: desc,
     intensity: 'medium',
     metadata: {},
   });

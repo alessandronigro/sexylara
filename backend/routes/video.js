@@ -5,6 +5,7 @@ const logToFile = require("../utils/log");
 const imageUrlToBase64 = require("../utils/imageToBase64");
 const { writeFile } = require("fs/promises");
 const storageService = require('../services/supabase-storage');
+const PromptOptimizer = require('../ai/media/PromptOptimizer');
 
 const FALLBACK_FACE_URL = "https://thril.me/lara-avatar.png";
 
@@ -49,8 +50,8 @@ const video = async (prompt, npc = null, chatHistory = [], userId = null, npcId 
 
         console.log('🎬 Using face reference for video:', faceRefUrl);
 
-        // Generate enhanced prompt using AI (placeholder for future prompt engineering)
-        const enhancedPrompt = prompt;
+        // Optimize prompt for video generation
+        const enhancedPrompt = await PromptOptimizer.optimizePrompt(prompt, 'video');
 
         const output = await fetch("https://api.minimax.io/v1/video_generation", {
             method: "POST",

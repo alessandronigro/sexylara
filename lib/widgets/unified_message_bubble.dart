@@ -275,6 +275,7 @@ class _VideoMessageState extends State<_VideoMessage> {
     _controller.initialize().then((_) {
       if (mounted) setState(() => _isInitialized = true);
     });
+    _controller.setLooping(true);
   }
 
   @override
@@ -296,13 +297,15 @@ class _VideoMessageState extends State<_VideoMessage> {
 
     return GestureDetector(
       onTap: () {
-        setState(() {
-          _controller.value.isPlaying ? _controller.pause() : _controller.play();
-        });
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => _FullScreenVideo(url: widget.url),
+          ),
+        );
       },
       child: SizedBox(
-        width: 200,
-        height: 150,
+        width: 240,
+        height: 180,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -311,6 +314,85 @@ class _VideoMessageState extends State<_VideoMessage> {
               const Icon(Icons.play_circle_outline, size: 50, color: Colors.white),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Full screen video viewer
+class _FullScreenVideo extends StatefulWidget {
+  final String url;
+  const _FullScreenVideo({required this.url});
+
+  @override
+  State<_FullScreenVideo> createState() => _FullScreenVideoState();
+}
+
+class _FullScreenVideoState extends State<_FullScreenVideo> {
+  late VideoPlayerController _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.url.startsWith('http')
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.url))
+        : VideoPlayerController.file(File(widget.url));
+    _controller.initialize().then((_) {
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+        });
+      }
+    });
+    _controller.setLooping(true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: _initialized
+            ? AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                VideoPlayer(_controller),
+                Positioned(
+                  bottom: 24,
+                  child: IconButton(
+                    icon: Icon(
+                      _controller.value.isPlaying ? Icons.pause_circle : Icons.play_circle,
+                      size: 56,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        if (_controller.value.isPlaying) {
+                          _controller.pause();
+                        } else {
+                          _controller.play();
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          )
+            : const CircularProgressIndicator(color: Colors.white),
       ),
     );
   }

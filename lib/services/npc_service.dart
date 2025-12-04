@@ -4,7 +4,6 @@ import '../config.dart';
 import '../models/npc.dart';
 import 'supabase_service.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class NpcService {
   static final _supabase = SupabaseService.client;
@@ -100,8 +99,12 @@ class NpcService {
   Future<void> deleteNpc(String id) async {
     try {
       // Call backend API to delete npc and all files
+      final userId = SupabaseService.currentUser?.id;
       final response = await http.delete(
         Uri.parse('${Config.apiBaseUrl}/api/npcs/$id'),
+        headers: {
+          if (userId != null) 'x-user-id': userId,
+        },
       );
 
       if (response.statusCode != 200) {

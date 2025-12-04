@@ -4,6 +4,7 @@ const { writeFile } = require("fs/promises");
 const { v4: uuidv4 } = require('uuid');
 const storageService = require('../services/supabase-storage');
 const { runReplicateWithLogging } = require('../utils/replicateLogger');
+const PromptOptimizer = require('../ai/media/PromptOptimizer');
 
 // ===============================================================
 //  GENERA AVATAR DI BASE (FOCUSSATO SUL VISO)
@@ -144,7 +145,8 @@ async function generateImage(prompt, npc = null, userId = null, language = 'en',
     : npc?.gender === 'female'
       ? 'female, feminine body, woman'
       : '';
-  const enhancedPrompt = genderHint ? `${genderHint}, ${prompt}` : prompt;
+  const optimizedPrompt = await PromptOptimizer.optimizePrompt(prompt, 'image');
+  const enhancedPrompt = genderHint ? `${genderHint}, ${optimizedPrompt}` : optimizedPrompt;
 
   // ========== 3️⃣ RECUPERA FACCIA NPC PER FACESWAP ==========
   const faceImage = _options.faceImageUrl || (npc ? await resolveNpcFaceImage(npc, language) : null);

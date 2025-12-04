@@ -47,6 +47,20 @@ const DEFAULT_LIFECORE = {
   },
 };
 
+function isLifeCoreRelevant(textAnalysis = {}) {
+  const markers = textAnalysis.markers || {};
+  const len = textAnalysis.length || (textAnalysis.raw ? textAnalysis.raw.length : 0);
+  if (len && len < 25) return false;
+
+  return Boolean(
+    markers.personal_info ||
+    markers.desire ||
+    markers.emotion ||
+    markers.future_plan ||
+    markers.relationship
+  );
+}
+
 function clamp(num, min, max) {
   return Math.min(Math.max(num, min), max);
 }
@@ -186,7 +200,17 @@ function updateRelationship(lifeCore, perception, intentReport = {}) {
 }
 
 function updateFromInteraction({ lifeCore: rawLifeCore, message, perception, intentReport, history, now = Date.now() }) {
-  const lifeCore = ensureLifeCoreStructure(rawLifeCore);
+  const baseLifeCore = ensureLifeCoreStructure(rawLifeCore);
+  const relevant = isLifeCoreRelevant(perception?.textAnalysis || {});
+
+  if (!relevant) {
+    return {
+      lifeCore: baseLifeCore,
+      signals: { skipped: true, reason: 'not_relevant' },
+    };
+  }
+
+  const lifeCore = baseLifeCore;
   const days = computeDaysSinceLastMessage(history, now);
   const topic = deriveTopic(message, perception);
   const sentiment = perception?.textAnalysis?.sentiment || 'neutral';
@@ -238,5 +262,6 @@ function updateFromInteraction({ lifeCore: rawLifeCore, message, perception, int
 module.exports = {
   ensureLifeCoreStructure,
   updateFromInteraction,
+  isLifeCoreRelevant,
   DEFAULT_LIFECORE,
 };

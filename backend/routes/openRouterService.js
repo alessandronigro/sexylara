@@ -3,6 +3,7 @@ const logToFile = require("../utils/log");
 const { processInteraction } = require("../ai/brainEngine"); // Updated to use consolidated brainEngine
 const { supabase } = require("../lib/supabase");
 const { routeLLM } = require("../ai/generation/LlmRouter");
+const { generate: generateVenice } = require("../ai/generation/LlmClient");
 const env = process.env.NODE_ENV || 'development';
 
 try {
@@ -135,12 +136,42 @@ IMPORTANT STYLE RULES:
       }
     }
 
-    const llmResponse = await routeLLM(systemPrompt, history, userMessage, null);
-    const content = llmResponse || "Ops... la mia lingerie si è incastrata sotto la doccia 😘 torno tra poco...";
+    let llmResponse = await routeLLM(systemPrompt, history, userMessage, null);
+    logToFile(`[openRouterService] llmResponse len=${(llmResponse || '').length} empty=${!llmResponse}`);
+    // Fallback generico (no lingerie)
+    let fallbackText = "Ops, ho avuto un vuoto un attimo. Bella foto! 😊";
+    // Se il messaggio è un commento foto, prova a sintetizzare dal testo stesso
+    if (userMessage && userMessage.includes("L'utente ha inviato una foto")) {
+      const m = userMessage.match(/Descrizione dell'immagine:\s*"([^"]+)/);
+      const desc = m && m[1] ? m[1].trim() : null;
+      if (desc) {
+        const shortDesc = desc.slice(0, 140);
+        fallbackText = `Bella foto: ${shortDesc}${desc.length > 140 ? '…' : ''}`;
+      }
+    }
+    // Retry con Venice diretto se vuoto/marker
+    let isEmpty = !llmResponse || /^\s*$/.test(llmResponse) || (typeof llmResponse === 'string' && llmResponse.includes('[EMPTY_RESPONSE]'));
+    if (isEmpty) {
+      try {
+        const veniceResp = await generateVenice(messages, null, { temperature: 0.4 });
+        logToFile(`[openRouterService] Venice retry len=${(veniceResp || '').length} empty=${!veniceResp}`);
+        llmResponse = veniceResp || llmResponse;
+      } catch (err) {
+        logToFile(`[openRouterService] Venice retry failed: ${err?.message || err}`);
+      }
+    }
+    isEmpty = !llmResponse || /^\s*$/.test(llmResponse) || (typeof llmResponse === 'string' && llmResponse.includes('[EMPTY_RESPONSE]'));
+    const content = isEmpty ? fallbackText : llmResponse;
 
     const modeMatch = content.match(/\[MODE:(image|video|audio|chat)\]/i);
     const mode = modeMatch ? modeMatch[1].toLowerCase() : "chat";
-    const cleanedContent = content.replace(/\[MODE:(image|video|audio|chat)\]/i, '').trim();
+    let cleanedContent = content.replace(/\[MODE:(image|video|audio|chat)\]/i, '').trim();
+    // Accorcia se troppo verboso (es. commenti foto)
+    if (cleanedContent.length > 220) {
+      cleanedContent = cleanedContent.slice(0, 220).trim();
+    }
+    if (!cleanedContent) cleanedContent = fallbackText;
+    logToFile(`[openRouterService] cleanedContent len=${(cleanedContent || '').length} mode=${mode}`);
 
     return { type: mode, output: cleanedContent.toString(), stateUpdates };
   };

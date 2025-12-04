@@ -80,7 +80,35 @@ function applyUserToneOverrideFromMessage(message, npc) {
   }
 }
 
+function wantsLifeCoreDebug(message = '') {
+  const lower = (message || '').toLowerCase();
+  return /(life\s*core|lifecore|mostra.*life\s*core|dammi.*life\s*core|vedere.*life\s*core|debug.*life\s*core)/i.test(lower);
+}
+
+function formatLifeCoreDebug(lifeCore) {
+  const core = lifeCore || {};
+  const snapshot = {
+    relationship: core.relationship,
+    present_context: core.time_memory?.present_context,
+    future_events: (core.time_memory?.future_events || []).slice(-5),
+    past_events_count: (core.time_memory?.past_events || []).length,
+    routine_readiness: core.routine_readiness,
+    timePatterns: core.timePatterns,
+    socialUrges: core.socialUrges,
+    worldAwareness: core.worldAwareness,
+  };
+  const json = JSON.stringify(snapshot, null, 2);
+  if (json.length > 1800) {
+    return `${json.slice(0, 1800)}\n...troncato`;
+  }
+  return json;
+}
+
 async function think(context) {
+  const executionId = context.executionId || `exec_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+  context.executionId = executionId;
+  console.log(`🧠 [${executionId}] BrainEngine start npc:${context.npcId} user:${context.userId}`);
+
   // 1) Input e stato (carica psiche da Supabase + history recente)
   const npcProfile = await getNpcProfile(context.npcId, context.npcName);
   context.npc = npcProfile.data;
@@ -129,19 +157,59 @@ async function think(context) {
   // IMPORTANTE: passa intentReport a EmotionalIntentEngine per rilevare contenuti espliciti/familiari
   let emotionalIntent = EmotionalIntentEngine.analyze(perception, intentReport);
 
-  // 2b) Aggiorna LifeCore (time memory, relationship, future events)
-  const temporalUpdate = LifeCoreTemporalEngine.updateFromInteraction({
-    lifeCore: context.lifeCore || context.npc?.npc_json || context.npc?.lifeCore,
-    message: context.message,
-    perception,
-    intentReport,
-    history: context.history,
-    now: Date.now(),
-  });
+  const lifeCoreRelevant = LifeCoreTemporalEngine.isLifeCoreRelevant(perception?.textAnalysis || {});
+
+  // 2b) Aggiorna LifeCore (time memory, relationship, future events) solo se rilevante
+  const temporalUpdate = lifeCoreRelevant
+    ? LifeCoreTemporalEngine.updateFromInteraction({
+      lifeCore: context.lifeCore || context.npc?.npc_json || context.npc?.lifeCore,
+      message: context.message,
+      perception,
+      intentReport,
+      history: context.history,
+      now: Date.now(),
+    })
+    : {
+      lifeCore: LifeCoreTemporalEngine.ensureLifeCoreStructure(
+        context.lifeCore || context.npc?.npc_json || context.npc?.lifeCore || {}
+      ),
+      signals: { skipped: true, reason: 'not_relevant' },
+    };
+
   context.lifeCore = temporalUpdate.lifeCore;
   context.npc.npc_json = temporalUpdate.lifeCore;
   context.temporalSignals = temporalUpdate.signals;
-  const memory = MemoryLayer.gatherMemory({ ...context, lifeCore: temporalUpdate.lifeCore });
+  const memory = lifeCoreRelevant
+    ? MemoryLayer.gatherMemory({ ...context, lifeCore: temporalUpdate.lifeCore })
+    : {
+      shortTerm: context.history || [],
+      midTerm: {},
+      longTerm: '',
+      episodic: [],
+      social: {},
+      media: [],
+      lastOpenings: [],
+      timeMemory: null,
+      relationship: temporalUpdate.lifeCore?.relationship || {},
+    };
+
+  // 💾 Dump LifeCore per richieste di debug esplicite
+  if (wantsLifeCoreDebug(context.message || '')) {
+    const debugDump = formatLifeCoreDebug(context.lifeCore);
+    await updateNpcProfile(context.npcId, context.npc); // persiste eventuali aggiornamenti di memoria
+    return {
+      text: `📑 LifeCore debug:\n${debugDump}`,
+      mediaRequest: null,
+      actions: ['DEBUG_LIFECORE', 'PERSONAL_REPLY'],
+      updatedState: {
+        mood: context.npc.preferences.tone_mode,
+        relationshipSummary: context.lifeCore.relationship?.interaction_history_summary,
+        xpDelta: null,
+        notableEvent: 'lifecore_debug',
+        memorySnapshot: context.lifeCore.time_memory?.present_context,
+      },
+    };
+  }
 
   // Se family guard, pulisci intents aggressivi/espliciti
   if (emotionalIntent?.familyGuard) {
@@ -177,6 +245,8 @@ async function think(context) {
   // Media intent gestito esternamente da intentLLM: nessuna gestione locale
   let mediaRequestOverride = null;
   let cachedUserPhoto = null;
+  let changeIntensity = 'none';
+  let xp = { total: 0 };
 
   // Aggiorna tone_mode in base ai feedback dell'utente
   if (intentReport.flags?.userWantsExplicitTone) {
@@ -261,6 +331,11 @@ async function think(context) {
     mediaRequestOverride: null,
   });
 
+  // Fallback se risposta vuota o marker di errore
+  if (!processed.text || processed.text.trim().length === 0 || processed.text.includes('[EMPTY_RESPONSE]')) {
+    processed.text = "Ops, mi ero distratta un attimo. Dimmi pure, sono qui. ❤️";
+  }
+
   // Se manca la foto utente e la richiesta è di couple_photo, forza testo esplicativo
   if (mediaRequestOverride?.type === 'user_photo_needed') {
     const reason = mediaRequestOverride.reason || '';
@@ -272,26 +347,28 @@ async function think(context) {
   if (context.media) {
     context.npc.memories.media.push({ ...context.media, at: Date.now() });
   }
-  if (perception.textAnalysis.sentiment === 'negative') {
+  if (lifeCoreRelevant && perception.textAnalysis.sentiment === 'negative') {
     context.npc.memories.episodic.push({
       description: 'Utente ha espresso disagio',
       intensity: 'high',
       at: Date.now(),
     });
   }
-  // Aggiungi episodio dell'interazione corrente
-  context.npc.memories.episodic.push({
-    description: `Interazione: ${processedContext.message?.slice(0, 140) || ''}`,
-    intent: motivation.primaryIntent,
-    at: Date.now(),
-  });
+  // Aggiungi episodio dell'interazione corrente solo se rilevante (evita mood/banalità)
+  if (lifeCoreRelevant) {
+    context.npc.memories.episodic.push({
+      description: `Interazione: ${processedContext.message?.slice(0, 140) || ''}`,
+      intent: motivation.primaryIntent,
+      at: Date.now(),
+    });
+  }
 
   // ======================================
   // MEMORY ADAPTATION per contenuti espliciti
   // ======================================
   context.npc.memories.user_preferences = context.npc.memories.user_preferences || {};
 
-  if (intentReport.flags?.userWantsExplicitSexualTone === true) {
+  if (lifeCoreRelevant && intentReport.flags?.userWantsExplicitSexualTone === true) {
     // Memorizza che l'utente gradisce dirty talk e dominanza
     context.npc.memories.user_preferences.likes_explicit = true;
     context.npc.memories.user_preferences.explicit_count = (context.npc.memories.user_preferences.explicit_count || 0) + 1;
@@ -316,38 +393,49 @@ async function think(context) {
   }
 
   // 5) Micro-evoluzione tratti e XP
-  TraitEvolution.evolve(context.npc, {
-    mood: personaState.mood,
-    focus: motivation.motivation,
-    intents: intentReport.intents,
-  });
+  if (lifeCoreRelevant) {
+    TraitEvolution.evolve(context.npc, {
+      mood: personaState.mood,
+      focus: motivation.motivation,
+      intents: intentReport.intents,
+    });
+    changeIntensity = 'low';
 
-  const xp = ExperienceEngine.awardXp(context.npc, {
-    intimacy: 1,
-    empathy: perception.textAnalysis.sentiment === 'negative' ? 3 : 1,
-    conflict: intentReport.intents.includes('aggression') ? 4 : intentReport.intents.includes('frustration') ? 2 : 0,
-    social: socialIntent.groupIntent === 'addressed' ? 2 : 1,
-  });
+    xp = ExperienceEngine.awardXp(context.npc, {
+      intimacy: 1,
+      empathy: perception.textAnalysis.sentiment === 'negative' ? 3 : 1,
+      conflict: intentReport.intents.includes('aggression') ? 4 : intentReport.intents.includes('frustration') ? 2 : 0,
+      social: socialIntent.groupIntent === 'addressed' ? 2 : 1,
+    });
 
-  SocialGraph.update(context.groupId, {
-    [context.userId]: {
-      weight: xp.xp_total ? xp.xp_total / 100 : xp.total / 100,
-    },
-  });
+    const futureAdded = (temporalUpdate.signals?.addedFutureEvents || []).length > 0;
+    if (futureAdded || (xp.total || 0) > 0 || (intentReport.intents || []).length > 0) {
+      changeIntensity = 'low';
+    }
 
-  // Relationship vector update (npc <-> user)
-  RelationshipEngine.update(context.lifeCore, {
-    perception,
-    intents: intentReport.intents,
-  });
-  context.npc.npc_json = context.lifeCore;
+    if (context.groupId && (socialIntent.groupIntent === 'addressed' || xp.total > 0)) {
+      SocialGraph.update(context.groupId, {
+        [context.userId]: {
+          weight: xp.xp_total ? xp.xp_total / 100 : xp.total / 100,
+        },
+      });
+    }
 
-  const consolidatedNpc = MemoryConsolidation.consolidate(
-    context.npc,
-    `Mood: ${personaState.mood}. ${memory.longTerm}`,
-  );
-  context.npc = consolidatedNpc;
-  context.brain = consolidatedNpc;
+    // Relationship vector update (npc <-> user)
+    RelationshipEngine.update(context.lifeCore, {
+      perception,
+      intents: intentReport.intents,
+    });
+    context.npc.npc_json = context.lifeCore;
+
+    const consolidatedNpc = MemoryConsolidation.consolidate(
+      context.npc,
+      `Mood: ${personaState.mood}. ${memory.longTerm}`,
+    );
+    context.npc = consolidatedNpc;
+    context.brain = consolidatedNpc;
+  }
+
   context.npc.relationship_with_user = {
     ...(context.npc.relationship_with_user || {}),
     last_interaction: Date.now(),
@@ -355,15 +443,20 @@ async function think(context) {
 
   // Aggiorna long term summary ogni 10 messaggi circa
   const interactionCount = (context.npc.memories.episodic || []).length;
-  if (interactionCount % 10 === 0) {
-    context.npc.memories.long_term_summary = `Mood attuale: ${personaState.mood}. Ultime intenzioni: ${intentReport.intents.join(', ')}. XP: ${context.npc.experience.xp_total}`;
+  if (lifeCoreRelevant && interactionCount % 10 === 0) {
+    context.npc.memories.long_term_summary = `Mood attuale: ${personaState.mood}. Ultime intenzioni: ${intentReport.intents.join(', ')}. XP: ${context.npc.experience?.xp_total || 0}`;
   }
   // Aggiorna last openings per anti-ripetizione
   const opening = (processed.text || '').slice(0, 80);
   context.npc.memories.last_openings = [opening, ...(context.npc.memories.last_openings || [])].slice(0, 5);
 
   // 6) Persisti il cervello NPC aggiornato in Supabase
-  await updateNpcProfile(context.npcId, context.brain || context.npc);
+  context.brain = context.brain || context.npc;
+  if (changeIntensity !== 'none') {
+    await updateNpcProfile(context.npcId, context.brain);
+  } else {
+    console.log(`ℹ️ [${executionId}] Skip updateNpcProfile (no evolution)`);
+  }
 
   let finalMediaRequest = null;
 
@@ -380,7 +473,7 @@ async function think(context) {
       mood: personaState.mood,
       relationshipSummary: personaState.relationship,
       xpDelta: xp,
-      notableEvent: perception.textAnalysis.sentiment === 'negative' ? 'utente in crisi' : null,
+      notableEvent: lifeCoreRelevant && perception.textAnalysis.sentiment === 'negative' ? 'utente in crisi' : null,
       memorySnapshot: context.npc.memories.long_term_summary,
     },
   };

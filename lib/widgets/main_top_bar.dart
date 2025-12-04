@@ -190,13 +190,13 @@ class _MainTopBarState extends ConsumerState<MainTopBar> {
     return AppBar(
       backgroundColor: const Color(0xFF1A1A1A),
       titleSpacing: 0,
-      leadingWidth: isCompact ? 120 : 140,
+      leadingWidth: isCompact ? 140 : 170,
       leading: InkWell(
         onTap: () => context.go('/'),
         child: Row(
           children: [
             const SizedBox(width: 12),
-            Image.asset('assets/icon.png', height: 28),
+            Image.asset('assets/icon.png', height: isCompact ? 34 : 38),
             if (!isCompact) ...[
               const SizedBox(width: 8),
               const Text(

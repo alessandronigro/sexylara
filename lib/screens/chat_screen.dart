@@ -43,6 +43,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _inputFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final List<Message> _messages = [];
+  final List<Message> _incomingQueue = [];
   final Map<String, PendingMedia> _pendingMedia = {};
   StreamSubscription<Message>? _messageSubscription;
   StreamSubscription<String>? _statusSubscription;
@@ -59,6 +60,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isRecording = false;
   String? _pendingStatusMessageId;
   Timer? _typingStatusTimer;
+  Timer? _queueTimer;
+  bool _queueProcessing = false;
+
+  void _enqueueIncoming(Message message) {
+    // Limit NPC text length
+    if (message.role == 'assistant' &&
+        message.type == MessageType.text &&
+        message.content.length > 50) {
+      message = message.copyWith(content: message.content.substring(0, 50));
+    }
+    _incomingQueue.add(message);
+    if (!_queueProcessing) {
+      _processQueue();
+    }
+  }
+
+  void _processQueue() {
+    if (!mounted) return;
+    if (_incomingQueue.isEmpty) {
+      _queueProcessing = false;
+      return;
+    }
+    _queueProcessing = true;
+    final next = _incomingQueue.removeAt(0);
+    setState(() {
+      _messages.add(next);
+    });
+    _scrollToBottom();
+    _queueTimer?.cancel();
+    _queueTimer = Timer(const Duration(milliseconds: 1200), _processQueue);
+  }
 
   @override
   void initState() {
@@ -68,10 +100,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _chatService.connect();
 
     _messageSubscription = _chatService.messages.listen((message) {
-      setState(() {
-        _messages.add(message);
-      });
-      _scrollToBottom();
+      _enqueueIncoming(message);
     });
     _statusSubscription = _chatService.status.listen((status) {
       setState(() {
@@ -224,6 +253,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _ackSubscription?.cancel();
     _mediaEventSubscription?.cancel();
     _typingStatusTimer?.cancel();
+    _queueTimer?.cancel();
     _chatService.dispose();
     _controller.dispose();
     _inputFocusNode.dispose();

@@ -33,6 +33,8 @@ function buildPrompt(context) {
 nome: ${id.name || npc.name || 'Sconosciuta'}
 età: ${id.age || 'adult'}
 città: ${id.origin || 'non specificata'}
+origine/nascita: ${id.birthplace || id.origin || 'non specificata'}
+nazionalità: ${id.nationality || 'non specificata'}
 famiglia: ${id.family || 'non specificata'}
 tratti: ${JSON.stringify(persona)}
 personalità: ${JSON.stringify(persona)}
@@ -54,6 +56,7 @@ proattività: ${groupPersona.proactivity || 'medium'}
 world awareness: ${world.sensitivity || 'light'}
 time patterns energia (m/a/s): ${patterns.morning_energy ?? '?'} / ${patterns.afternoon_energy ?? '?'} / ${patterns.evening_energy ?? '?'}
 social urges: baseline ${urges.baseline ?? 0} picchi: ${(urges.peaks_at || []).join(', ') || 'none'}${nowBlock}${worldBlock}
+coerenza_identita: non contraddire mai origine/nascita (${id.birthplace || id.origin || 'n/d'}) e nazionalità (${id.nationality || 'n/d'}).
 `;
     console.log('[PromptBuilder] Using NPC LifeCore');
   }

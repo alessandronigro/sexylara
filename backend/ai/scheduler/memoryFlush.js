@@ -22,7 +22,6 @@ function start(intervalMs = 5000) {
     flushInterval = setInterval(async () => {
         const queueSize = MemoryConsolidationEngine.getQueueSize();
         if (queueSize > 0) {
-            console.log(`🧠 Memory flush scheduler: flushing ${queueSize} events`);
             await MemoryConsolidationEngine.flush();
         }
     }, intervalMs);

@@ -1222,6 +1222,11 @@ wss.on('connection', (ws, req) => {
         const mediaRequested = generationType === 'photo' || generationType === 'video' || generationType === 'audio' || generationType === 'couple_photo';
         if (output && (output.includes("[VENICE_ERROR]") || output.includes("[EMPTY_RESPONSE]"))) {
           type = 'chat';
+          output = "Ops, mi ero distratta un attimo. Dimmi pure, sono qui. ❤️";
+        }
+        if (!output || !output.trim()) {
+          output = "Ops, mi ero distratta un attimo. Dimmi pure, sono qui. ❤️";
+          type = 'chat';
         }
 
         if (mediaRequested) {

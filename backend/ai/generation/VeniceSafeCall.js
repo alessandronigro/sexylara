@@ -107,7 +107,16 @@ async function veniceSafeCall(model, input) {
       throw lastErr;
     }
 
-    return output.trim() || "[EMPTY_RESPONSE]";
+    const cleaned = (output || "").toString().trim();
+    if (!cleaned) {
+      const warnMsg = `[VeniceSafeCall] Empty output after all candidates. Returning [EMPTY_RESPONSE]. Models tried: ${candidates.join(', ')}`;
+      console.warn(warnMsg);
+      try { require('../../utils/log')(`${warnMsg} | prompt="${prompt.slice(0,200)}..."`); } catch (e) {}
+      return "[EMPTY_RESPONSE]";
+    }
+
+    try { require('../../utils/log')(`[VeniceSafeCall] ok model=${candidates[0]} len=${cleaned.length}`); } catch (e) {}
+    return cleaned;
 
   } catch (err) {
     const status = err?.response?.status || err?.status;

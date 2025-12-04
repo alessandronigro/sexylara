@@ -35,6 +35,12 @@ const NPC_LABELS = [
   'npc_send_none'
 ];
 
+const ASK_VERBS = [
+  'fammi', 'manda', 'mandami', 'inviami', 'invia', 'mostra', 'mostrami',
+  'fai vedere', 'mostrare', 'vorrei', 'voglio', 'puoi', 'potresti',
+  'dammi', 'send', 'show', 'let me see'
+];
+
 function buildPrompt(labels) {
   return `
 Sei un classificatore di intenzioni.
@@ -49,6 +55,13 @@ Regole:
 
 function heuristicIntent(text, role) {
   const lower = text.toLowerCase();
+  const hasAskVerb = ASK_VERBS.some((v) => lower.includes(v));
+
+  // Complimenti o commenti su media già esistenti non devono scatenare una richiesta
+  const mediaCompliment = /(che bella foto|bella foto|bellissima foto|bel video|bello sto video|quanto sei bella nel video|bella immagine|nice pic|nice photo|great photo|beautiful picture)/i;
+  if (mediaCompliment.test(lower) && !hasAskVerb) {
+    return 'talk_about_media';
+  }
 
   if (role === 'npc') {
     if (/(http.*\.(jpg|jpeg|png|webp)|data:image)/i.test(lower) || /ti mando.*foto|ecco.*foto|guarda questa foto/i.test(lower)) {
@@ -64,9 +77,9 @@ function heuristicIntent(text, role) {
     return 'group_engage';
   }
 
-  if (/\b(foto|immagine|selfie|pic|picture)\b/i.test(lower)) return 'request_image';
-  if (/\b(video|filmato|clip)\b/i.test(lower)) return 'request_video';
-  if (/\b(audio|vocale|voce)\b/i.test(lower)) return 'request_audio';
+  if (/\b(foto|immagine|selfie|pic|picture)\b/i.test(lower) && hasAskVerb) return 'request_image';
+  if (/\b(video|filmato|clip)\b/i.test(lower) && hasAskVerb) return 'request_video';
+  if (/\b(audio|vocale|voce)\b/i.test(lower) && hasAskVerb) return 'request_audio';
   if (/perch[eé].*foto|aspetta.*foto|parli.*foto|media/i.test(lower)) return 'talk_about_media';
   if (/hot|piccante|spinto|sex|porno|nudo|nuda|cazzo|fica/i.test(lower)) return 'spicy';
   if (/amore|tesoro|mi manchi|baciami|sei bell[ao]|mi piaci/i.test(lower)) return 'flirt';
@@ -85,17 +98,24 @@ async function classifyIntent(text, role = 'user') {
   }
 
   const allowed = role === 'npc' ? NPC_LABELS : USER_LABELS;
+  const normalized = (text || '').toString();
+  const lower = normalized.toLowerCase();
+  const hasAskVerb = ASK_VERBS.some((v) => lower.includes(v));
   const heuristic = heuristicIntent(text, role);
   if (heuristic && allowed.includes(heuristic)) return heuristic;
 
   const systemPrompt = buildPrompt(allowed);
-  const input = text.trim();
+  const input = normalized.trim();
   let cleaned = '';
 
   try {
     const reply = await routeLLM(systemPrompt, [], input, null);
     cleaned = (reply || '').toString().trim().toLowerCase();
     if (cleaned.includes('venice_error')) cleaned = '';
+    // Evita falsi positivi di media se manca un verbo di richiesta esplicita
+    if (!hasAskVerb && ['request_image', 'request_video', 'request_audio'].includes(cleaned)) {
+      cleaned = 'conversation';
+    }
     if (allowed.includes(cleaned)) return cleaned;
     const partial = allowed.find(l => cleaned.includes(l));
     if (partial) return partial;

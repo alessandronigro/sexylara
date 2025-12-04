@@ -13,7 +13,7 @@ set -euo pipefail
 VPS_HOST="45.85.146.77"
 VPS_USER="root"
 VPS_PASS="*Giuseppe78"
-VPS_DEST="/var/www/thrillme"
+VPS_DEST="/var/www/thrilme"
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # --- CONFIGURAZIONE PATH ---
