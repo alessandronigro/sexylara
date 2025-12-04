@@ -1021,7 +1021,7 @@ wss.on('connection', (ws, req) => {
         let output = response.text || response.output;
         let type = classifierMediaType || 'chat';
         // Gestione errori Venice
-        let npcIntent = null;
+        let npcIntent = 'npc_send_none'; // Default: no media
         if (output === "[VENICE_ERROR]" || output === "[EMPTY_RESPONSE]") {
           output = "Amore, scusa… credo di aver perso il filo. Cosa volevi dirmi?";
           npcIntent = "npc_send_none";
@@ -1031,10 +1031,15 @@ wss.on('connection', (ws, req) => {
         // =======================================================
         // 🧠 CLASSIFICAZIONE INTENTO DELL'NPC (output del modello)
         // =======================================================
+        // DISABILITATO: La classificazione automatica dell'intent NPC basata sul testo
+        // causava falsi positivi (es. menzionare "videochiamata" triggera generazione video).
+        // L'NPC dovrebbe inviare media solo quando:
+        // 1. L'utente lo richiede esplicitamente (classifierMediaType è già impostato)
+        // 2. Il BrainEngine decide spontaneamente (da implementare nel BrainEngine stesso)
 
-        if (!npcIntent) {
-          npcIntent = await classifyIntent(output || '', 'npc');
-        }
+        // if (!npcIntent) {
+        //   npcIntent = await classifyIntent(output || '', 'npc');
+        // }
         console.log('🧭 Detected intent npc:', npcIntent);
 
         // Controlla se l'NPC vuole inviare media autonomamente (non richiesto dall'utente)
