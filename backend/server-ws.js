@@ -30,7 +30,7 @@ const { saveUserPhoto } = require('./ai/media/saveUserPhoto');
 const { askPhoto, captions } = require('./ai/language/translations');
 const { detectInvokedNpcId } = require("./ai/engines/GroupBrainEngine");
 const { checkForInitiative } = require('./ai/scheduler/NpcInitiativeEngine');
-const globalScheduler = require('./ai/scheduler/globalScheduler');
+
 const { classifyIntent } = require('./ai/intent/intentLLM');
 const pendingCouplePhoto = new Map();
 
