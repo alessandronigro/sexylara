@@ -13,18 +13,32 @@ async function generate(messagesArray, modelOverride = null, options = {}) {
     throw new Error("messagesArray must be an array");
   }
 
+
   const env = process.env.NODE_ENV || "development";
   const explicitMode = options.explicitMode === true || options.explicitMode === 'sexual';
   const explicitSexual = options.explicitMode === 'sexual' || options.explicitSexualTone === true || options.userWantsExplicitSexualTone === true;
 
-  // EXPLICIT MODE: hard override payload → solo messaggio utente, nessun system, nessun parametro extra
+  // EXPLICIT MODE: Use venice-uncensored with explicit system prompt
   if (explicitMode || explicitSexual) {
-    const userMsg = options.userMessage || messagesArray[messagesArray.length - 1]?.content || "";
+    // Explicit system prompt that encourages direct, specific, detailed responses
+    const explicitSystemPrompt = explicitSexual
+      ? `You are a confident, sexually liberated character engaging in an intimate conversation. 
+Be DIRECT, SPECIFIC, and DETAILED in your responses. Don't ask for clarification or say "do you want to talk about something more specific".
+Engage with the topic immediately and explicitly. Use vivid, descriptive language. Be bold and uninhibited.
+Respond naturally in Italian unless the user speaks another language.`
+      : `You are a playful, flirty character. Be direct and specific in your responses. 
+Don't be vague or ask for clarification. Engage with the topic immediately.
+Respond naturally in Italian unless the user speaks another language.`;
+
+    // Use full conversation history with explicit system prompt
+    const system = messagesArray[0];
+    const history = messagesArray.slice(1);
 
     const payload = {
       model: "venice-uncensored",
       messages: [
-        { role: "user", content: userMsg }
+        { role: "system", content: explicitSystemPrompt },
+        ...history
       ]
     };
 
@@ -72,6 +86,7 @@ async function generate(messagesArray, modelOverride = null, options = {}) {
       return "Non riesco a rispondere adesso.";
     }
   }
+
 
   // STANDARD MODE
   const modelToUse = modelOverride || process.env.MODEL_VENICE;
