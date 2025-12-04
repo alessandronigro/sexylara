@@ -24,7 +24,19 @@ const ROLE_PERMISSIONS = {
  */
 async function checkPermission(userId, groupId, action) {
     try {
-        // 1. Recupera il ruolo dell'utente nel gruppo
+        // 1. PRIORITY: Check if user is the group owner
+        const { data: group, error: groupError } = await supabase
+            .from('groups')
+            .select('user_id')
+            .eq('id', groupId)
+            .single();
+
+        if (!groupError && group && group.user_id === userId) {
+            // Owner always has all permissions
+            return true;
+        }
+
+        // 2. FALLBACK: Check role-based permissions
         const { data, error } = await supabase
             .from('group_members')
             .select('role')
@@ -39,7 +51,7 @@ async function checkPermission(userId, groupId, action) {
 
         const userRole = data.role;
 
-        // 2. Verifica se il ruolo ha il permesso
+        // 3. Verifica se il ruolo ha il permesso
         const allowedActions = ROLE_PERMISSIONS[userRole] || [];
 
         // Eccezione: Admin non può rimuovere Owner

@@ -25,6 +25,7 @@ flutter clean
 flutter pub get
 
 flutter build web \
+  --output="$REPO_ROOT/build/web-local" \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
   --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
@@ -36,7 +37,7 @@ flutter build web \
   --release
 
 echo "✅ Build web completata!"
-cd "$REPO_ROOT/build/web"
+cd "$REPO_ROOT/build/web-local"
 pids=$(lsof -ti tcp:8080 || true)
 if [ -n "$pids" ]; then
   echo "⚠️ Porta 8080 già in uso, chiudo il processo esistente: $pids"

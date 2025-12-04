@@ -8,10 +8,14 @@ import 'dart:convert';
 
 import '../config.dart';
 import '../services/supabase_service.dart';
+import '../services/invite_service.dart';
 import 'package:thrilme/models/message.dart';
 import 'package:thrilme/widgets/unified_message_bubble.dart';
 import 'npc_feed_screen.dart';
 import 'npc_profile_screen.dart';
+import '../services/group_service.dart';
+import '../services/npc_service.dart';
+import '../models/npc.dart';
 
 class GroupChatScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -31,6 +35,10 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   WebSocketChannel? _channel;
   bool _isConnected = false;
   String _currentStatus = '';
+  final Set<String> _memberIds = {};
+  List<Npc> _availableNpcs = [];
+  List<ThrillerContact> _contacts = [];
+  bool _addingMembers = false;
 
   @override
   void initState() {
@@ -183,6 +191,9 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           setState(() {
             _groupName = data['group']?['name'] ?? 'Gruppo';
             _members = data['members'] ?? [];
+            _memberIds
+              ..clear()
+              ..addAll(_members.map((m) => (m['id'] ?? m['npc_id'] ?? m['member_id'])?.toString() ?? '').where((e) => e.isNotEmpty));
           });
         }
       }
@@ -245,7 +256,20 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('Membri del gruppo', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Membri del gruppo', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                  TextButton.icon(
+                    onPressed: _showAddMembersSheet,
+                    icon: const Icon(Icons.person_add_alt, color: Colors.pinkAccent),
+                    label: const Text('Aggiungi', style: TextStyle(color: Colors.pinkAccent)),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               if (_members.isEmpty)
                 const Padding(
@@ -291,6 +315,163 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 ),
               const SizedBox(height: 12),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _loadAvailableNpcs() async {
+    if (_availableNpcs.isNotEmpty) return;
+    try {
+      final list = await NpcService().getNpcs();
+      setState(() => _availableNpcs = list);
+    } catch (e) {
+      // Silently ignore in UI
+      debugPrint('Errore caricamento NPC: $e');
+    }
+  }
+
+  Future<void> _loadContacts() async {
+    if (_contacts.isNotEmpty) return;
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) return;
+      final inviteService = ref.read(inviteServiceProvider);
+      final list = await inviteService.fetchContacts();
+      setState(() => _contacts = list);
+    } catch (e) {
+      debugPrint('Errore caricamento contatti: $e');
+    }
+  }
+
+  Future<void> _addContactToGroup(ThrillerContact c) async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+    if (_memberIds.contains(c.id)) return;
+    setState(() => _addingMembers = true);
+    try {
+      final groupService = GroupService(userId: userId);
+      if (c.type == 'user') {
+        await groupService.inviteUser(groupId: widget.groupId, receiverId: c.id);
+      } else {
+        await groupService.inviteNpc(groupId: widget.groupId, npcId: c.id);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${c.name} invitato al gruppo')),
+      );
+      await _loadGroupInfo();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore invito: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _addingMembers = false);
+    }
+  }
+
+  Future<void> _addNpcToGroup(String npcId) async {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null || npcId.isEmpty) return;
+    setState(() => _addingMembers = true);
+    try {
+      final groupService = GroupService(userId: userId);
+      await groupService.inviteNpc(groupId: widget.groupId, npcId: npcId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Thriller aggiunto al gruppo')),
+      );
+      await _loadGroupInfo();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore invito Thriller: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _addingMembers = false);
+    }
+  }
+
+  void _showAddMembersSheet() async {
+    await _loadContacts();
+    await _loadAvailableNpcs();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Aggiungi partecipanti', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('I miei contatti', style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 200,
+                  child: _contacts.isEmpty
+                      ? const Center(child: Text('Nessun contatto', style: TextStyle(color: Colors.white70)))
+                      : ListView.builder(
+                          itemCount: _contacts.length,
+                          itemBuilder: (_, idx) {
+                            final c = _contacts[idx];
+                            final already = _memberIds.contains(c.id);
+                            final isNpc = c.type == 'npc';
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.grey[800],
+                                backgroundImage: c.avatar != null ? NetworkImage(c.avatar!) : null,
+                                child: c.avatar == null ? Icon(isNpc ? Icons.smart_toy : Icons.person, color: Colors.white) : null,
+                              ),
+                              title: Text(c.name, style: const TextStyle(color: Colors.white)),
+                              subtitle: Text(isNpc ? 'Thriller' : 'Utente', style: TextStyle(color: Colors.grey[600])),
+                              trailing: IconButton(
+                                icon: Icon(already ? Icons.check : Icons.person_add_alt, color: already ? Colors.greenAccent : Colors.pinkAccent),
+                                onPressed: already || _addingMembers ? null : () => _addContactToGroup(c),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('I miei Thriller', style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 220,
+                  child: _availableNpcs.isEmpty
+                      ? const Center(child: Text('Nessun Thriller disponibile', style: TextStyle(color: Colors.white70)))
+                      : ListView.builder(
+                          itemCount: _availableNpcs.length,
+                          itemBuilder: (_, idx) {
+                            final npc = _availableNpcs[idx];
+                            final already = _memberIds.contains(npc.id);
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.grey[800],
+                                backgroundImage: npc.avatarUrl != null ? NetworkImage(npc.avatarUrl!) : null,
+                                child: npc.avatarUrl == null ? const Icon(Icons.smart_toy, color: Colors.white) : null,
+                              ),
+                              title: Text(npc.name, style: const TextStyle(color: Colors.white)),
+                              subtitle: Text(npc.displayDescription, style: TextStyle(color: Colors.grey[600])),
+                              trailing: IconButton(
+                                icon: Icon(already ? Icons.check : Icons.person_add_alt, color: already ? Colors.greenAccent : Colors.pinkAccent),
+                                onPressed: already || _addingMembers ? null : () => _addNpcToGroup(npc.id),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         );
       },

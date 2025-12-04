@@ -111,7 +111,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     });
 
     try {
-      await SupabaseService.instance.signInWithGoogle();
+      final resp = await SupabaseService.instance.signInWithGoogle();
+      final user = resp.user;
+      if (user != null) {
+        final avatar = user.userMetadata?['avatar_url'];
+        final username =
+            user.userMetadata?['full_name'] ?? user.email?.split('@')[0] ?? 'User';
+        try {
+          await SupabaseService.client.from('user_profile').upsert({
+            'id': user.id,
+            if (avatar != null) 'avatar_url': avatar,
+            'username': username,
+          });
+        } catch (e) {
+          debugPrint('Error saving Google profile on register: $e');
+        }
+      }
       await ref.read(sessionProvider.notifier).refresh();
       if (mounted) {
         context.go('/');

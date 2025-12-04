@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../lib/supabase');
+const { checkPermission } = require('../middleware/permissions');
 
 // ===============================================================
 // GET /api/group/discover/users
@@ -82,7 +83,7 @@ router.get('/group/discover/npcs', async (req, res) => {
 
 // ===============================================================
 // POST /api/group/invite
-// Invia un invito a un utente o AI per unirsi a un gruppo
+// Invia un invito a un utente o NPC per unirsi a un gruppo
 // ===============================================================
 router.post('/group/invite', async (req, res) => {
   const { groupId, invitedId, invitedType, message } = req.body;
@@ -93,83 +94,130 @@ router.post('/group/invite', async (req, res) => {
   }
 
   if (!groupId || !invitedId || !invitedType) {
-    return res.status(400).json({ 
-      error: 'Missing required fields: groupId, invitedId, invitedType' 
+    return res.status(400).json({
+      error: 'Missing required fields: groupId, invitedId, invitedType'
     });
   }
 
+  // Validate invitedType (support both 'ai' and 'npc' for backward compatibility)
+  if (!['npc', 'user', 'ai'].includes(invitedType)) {
+    return res.status(400).json({ error: 'Invalid invitedType. Must be "npc", "user", or "ai"' });
+  }
+
+  // Normalize 'ai' to 'npc' for consistency
+  const normalizedType = invitedType === 'ai' ? 'npc' : invitedType;
+
   try {
-    // Verifica che l'utente abbia i permessi per invitare
-    const { data: membership, error: memberErr } = await supabase
-      .from('group_members')
-      .select('role')
-      .eq('group_id', groupId)
-      .eq('member_id', invitedBy)
-      .eq('member_type', 'user')
-      .single();
+    // Check permissions using middleware logic (owner always has permission)
+    const action = normalizedType === 'npc' ? 'invite_npc' : 'invite_user';
+    const hasPermission = await checkPermission(invitedBy, groupId, action);
 
-    if (memberErr || !membership) {
-      // Verifica se è il proprietario del gruppo
-      const { data: group, error: groupErr } = await supabase
-        .from('groups')
-        .select('user_id')
-        .eq('id', groupId)
-        .single();
-
-      if (groupErr || group.user_id !== invitedBy) {
-        return res.status(403).json({ 
-          error: 'You do not have permission to invite members to this group' 
-        });
-      }
-    } else if (membership.role !== 'owner' && membership.role !== 'admin') {
-      return res.status(403).json({ 
-        error: 'Only owners and admins can invite members' 
+    if (!hasPermission) {
+      return res.status(403).json({
+        error: 'Insufficient permissions. Only group owners and admins can invite members.'
       });
     }
 
-    // Verifica che l'invitato non sia già nel gruppo
+    // Check if already a member
     const { data: existingMember } = await supabase
       .from('group_members')
       .select('id')
       .eq('group_id', groupId)
       .eq('member_id', invitedId)
-      .eq('member_type', invitedType)
+      .eq('member_type', normalizedType)
       .single();
 
     if (existingMember) {
-      return res.status(400).json({ 
-        error: 'This member is already in the group' 
+      return res.status(409).json({
+        error: normalizedType === 'npc' ? 'NPC already in group' : 'User already in group'
       });
     }
 
-    // Crea l'invito
+    // NPC-specific handling
+    if (normalizedType === 'npc') {
+      // Validate NPC exists and belongs to inviter
+      const { data: npc, error: npcError } = await supabase
+        .from('npcs')
+        .select('id, user_id, name')
+        .eq('id', invitedId)
+        .single();
+
+      if (npcError || !npc) {
+        return res.status(404).json({ error: 'NPC not found' });
+      }
+
+      if (npc.user_id !== invitedBy) {
+        return res.status(403).json({ error: 'You can only invite your own NPCs to groups' });
+      }
+
+      // Add NPC directly to group (no pending invite)
+      const { error: memberErr } = await supabase
+        .from('group_members')
+        .insert({
+          group_id: groupId,
+          member_id: invitedId,
+          member_type: 'npc',
+          npc_id: invitedId,
+          role: 'member'
+        });
+
+      if (memberErr) {
+        console.error('Error adding NPC to group:', memberErr);
+        throw memberErr;
+      }
+
+      // Initialize NPC in group
+      await initializeAiInGroup(invitedId, groupId);
+
+      return res.json({
+        success: true,
+        added: 'npc',
+        npcId: invitedId,
+        npcName: npc.name
+      });
+    }
+
+    // User invite handling (pending invite)
+    // Check if invite already exists
+    const { data: existingInvite } = await supabase
+      .from('group_invites')
+      .select('id, status')
+      .eq('group_id', groupId)
+      .eq('invited_id', invitedId)
+      .eq('invited_type', 'user')
+      .single();
+
+    if (existingInvite) {
+      if (existingInvite.status === 'pending') {
+        return res.status(409).json({ error: 'User already has a pending invite' });
+      }
+    }
+
+    // Create pending invite
     const { data: invite, error: inviteErr } = await supabase
       .from('group_invites')
       .insert({
         group_id: groupId,
         invited_id: invitedId,
-        invited_type: invitedType,
+        invited_type: 'user',
         invited_by: invitedBy,
-        message: message || null
+        message: message || null,
+        status: 'pending'
       })
       .select()
       .single();
 
     if (inviteErr) throw inviteErr;
 
-    // Se l'invitato è un AI, accetta automaticamente
-    if (invitedType === 'ai') {
-      await acceptInvite(invite.id);
-      return res.json({ 
-        success: true, 
-        invite, 
-        autoAccepted: true,
-        message: 'AI contact added to group automatically' 
-      });
-    }
+    // TODO: Send push notification to invited user
 
-    // TODO: Invia notifica push all'utente invitato
-    res.json({ success: true, invite });
+    res.json({
+      success: true,
+      invited: 'user',
+      userId: invitedId,
+      status: 'pending',
+      inviteId: invite.id
+    });
 
   } catch (error) {
     console.error('Error creating invite:', error);
@@ -320,14 +368,14 @@ async function acceptInvite(inviteId, userId = null) {
 
   if (updateErr) throw updateErr;
 
-  // Se è un AI, inizializza la memoria
-  if (invite.invited_type === 'ai') {
+  // Se è un AI/NPC, inizializza la memoria
+  if (invite.invited_type === 'ai' || invite.invited_type === 'npc') {
     await initializeAiInGroup(invite.invited_id, invite.group_id);
   }
 }
 
 // ===============================================================
-// HELPER FUNCTION: Inizializza un AI nel gruppo
+// HELPER FUNCTION: Inizializza un AI/NPC nel gruppo
 // ===============================================================
 async function initializeAiInGroup(aiId, groupId) {
   // Verifica se esiste già una memoria di gruppo
@@ -352,7 +400,7 @@ async function initializeAiInGroup(aiId, groupId) {
       });
   }
 
-  console.log(`✅ AI ${aiId} inizializzato nel gruppo ${groupId}`);
+  console.log(`✅ AI/NPC ${aiId} inizializzato nel gruppo ${groupId}`);
 }
 
 module.exports = router;

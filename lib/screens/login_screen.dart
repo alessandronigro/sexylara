@@ -56,12 +56,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final response = await SupabaseService.instance.signInWithGoogle();
       // Save Google avatar to user profile
       final user = response.user;
-      if (user != null && user.userMetadata?['avatar_url'] != null) {
+      if (user != null) {
+        final avatar = user.userMetadata?['avatar_url'];
+        final username =
+            user.userMetadata?['full_name'] ?? user.email?.split('@')[0] ?? 'User';
         try {
           await SupabaseService.client.from('user_profile').upsert({
             'id': user.id,
-            'avatar_url': user.userMetadata!['avatar_url'],
-            'username': user.userMetadata?['full_name'] ?? user.email?.split('@')[0] ?? 'User',
+            if (avatar != null) 'avatar_url': avatar,
+            'username': username,
           });
         } catch (e) {
           debugPrint('Error saving Google avatar: $e');

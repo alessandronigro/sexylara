@@ -57,6 +57,15 @@ class _GroupListScreenState extends ConsumerState<GroupListScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: const MainTopBar(active: MainTopBarSection.groups),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.pinkAccent,
+        foregroundColor: Colors.white,
+        onPressed: () async {
+          await context.push('/groups/create');
+          _loadData();
+        },
+        child: const Icon(Icons.add),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: Colors.pinkAccent))
           : RefreshIndicator(
