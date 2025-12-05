@@ -22,6 +22,8 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
   List<AiContact> _myAi = [];
   List<AiContact> _publicAi = [];
   bool _isLoading = true;
+  final Set<String> _invitingIds = {};
+  final Set<String> _invitedIds = {};
 
   @override
   void initState() {
@@ -42,6 +44,8 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
         _myAi = allContacts.where((ai) => ai.isOwned).toList();
         _publicAi = allContacts.where((ai) => !ai.isOwned && ai.isPublic).toList();
         _isLoading = false;
+        _invitedIds
+          ..clear(); // reset local invited state
       });
     } catch (e) {
       if (mounted) {
@@ -54,7 +58,11 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
   }
 
   Future<void> _invite(AiContact contact) async {
+    if (_invitingIds.contains(contact.id) || _invitedIds.contains(contact.id)) return;
     try {
+      setState(() {
+        _invitingIds.add(contact.id);
+      });
       final groupService = ref.read(groupServiceProvider);
       
       final result = await groupService.inviteNpc(
@@ -82,7 +90,9 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
         );
         
         if (status == 'accepted' || status == 'pending_approval') {
-           // Optional: remove from list or mark as invited
+          setState(() {
+            _invitedIds.add(contact.id);
+          });
         }
       }
     } catch (e) {
@@ -90,6 +100,12 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error inviting: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _invitingIds.remove(contact.id);
+        });
       }
     }
   }
@@ -139,13 +155,21 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
             style: TextStyle(color: Colors.grey[600], fontSize: 12),
           ),
           trailing: ElevatedButton(
-            onPressed: () => _invite(ai),
+            onPressed: (_invitingIds.contains(ai.id) || _invitedIds.contains(ai.id))
+                ? null
+                : () => _invite(ai),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
+              backgroundColor: _invitedIds.contains(ai.id)
+                  ? Colors.green
+                  : Theme.of(context).primaryColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
-            child: const Text('Invite'),
+            child: Text(
+              _invitedIds.contains(ai.id)
+                  ? 'Invited'
+                  : (_invitingIds.contains(ai.id) ? 'Sending...' : 'Invite'),
+            ),
           ),
         );
       },

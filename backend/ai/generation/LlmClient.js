@@ -13,11 +13,11 @@ async function generate(messagesArray, modelOverride = null, options = {}) {
     throw new Error("messagesArray must be an array");
   }
 
-
   const env = process.env.NODE_ENV || "development";
   const explicitMode = options.explicitMode === true || options.explicitMode === 'sexual';
   const explicitSexual = options.explicitMode === 'sexual' || options.explicitSexualTone === true || options.userWantsExplicitSexualTone === true;
 
+  // Helper to log payload
   const logPayload = (label, payload, model) => {
     if (env === "production") return;
     try {
@@ -30,24 +30,32 @@ async function generate(messagesArray, modelOverride = null, options = {}) {
     }
   };
 
-  const callVenice = async (model, messages, temperature = 0.45, maxTokens = 500) => {
+  // Internal helper: call VeniceSafeCall directly
+  const callVenice = async (model, messages, temperature = 0.45, maxTokens = 500, callOptions = {}) => {
     const payload = {
       messages,
       temperature,
       max_tokens: maxTokens,
+      // Pass overrides for Venice parameters
+      venice_websearch: callOptions.venice_websearch,
+      disable_thinking: callOptions.disable_thinking,
+      strip_thinking: callOptions.strip_thinking
     };
     logPayload("REQUEST TO VENICE", payload, model);
+
+    // STRICT: Only VeniceSafeCall
     const resp = await veniceSafeCall(model, payload);
-    if (!resp || resp === "[EMPTY_RESPONSE]" || resp === "[VENICE_ERROR]") {
+
+    if (!resp || resp === "[VENICE_ERROR]") {
       return '';
     }
     try {
       logToFile(`VENICE RESPONSE | model=${model} | len=${resp.length}`);
-    } catch (_) {}
+    } catch (_) { }
     return resp.trim();
   };
 
-  // EXPLICIT MODE: Use venice-uncensored with explicit system prompt
+  // EXPLICIT MODE
   if (explicitMode || explicitSexual) {
     const explicitSystemPrompt = explicitSexual
       ? `You are a confident, sexually liberated character engaging in an intimate conversation. 
@@ -62,19 +70,23 @@ Don't be vague or ask for clarification. Engage immediately.`;
       ...history
     ];
 
-    const resp = await callVenice("venice-uncensored", messages, 0.7, 600);
+    // Model selection: Explicit override -> Default
+    const explicitModel = process.env.MODEL_VENICE_EXPLICIT || "venice-uncensored";
+
+    const resp = await callVenice(explicitModel, messages, 0.7, 600, options);
     return resp || "Non riesco a rispondere adesso.";
   }
 
 
-  // STANDARD MODE (always VeniceSafeCall, no llama fallback)
+  // STANDARD MODE
+  // Model selection: Override -> Env -> Default
   const modelToUse = modelOverride || process.env.MODEL_VENICE || "venice-uncensored";
 
   const system = messagesArray[0];
   const usableHistory = sanitizeHistoryForLLM(messagesArray.slice(1));
   const finalMessages = [system, ...usableHistory];
 
-  const resp = await callVenice(modelToUse, finalMessages, 0.45, 500);
+  const resp = await callVenice(modelToUse, finalMessages, 0.45, 500, options);
   return resp || "Non riesco a rispondere adesso.";
 }
 

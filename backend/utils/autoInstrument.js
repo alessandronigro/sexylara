@@ -7,7 +7,8 @@ const http = require('http');
 if (global.__AUTO_FUNCTION_LOGGER__) {
   module.exports = global.__AUTO_FUNCTION_LOGGER__;
 } else {
-  const instrumentationState = { enabled: true };
+  // Disabled by default; set FN_LOGS_ENABLED=1 to turn on
+  const instrumentationState = { enabled: process.env.FN_LOGS_ENABLED === '1' };
   global.__AUTO_FUNCTION_LOGGER__ = instrumentationState;
   module.exports = instrumentationState;
 
@@ -15,16 +16,20 @@ if (global.__AUTO_FUNCTION_LOGGER__) {
     process.env.FUNCTION_LOGS_DISABLED === '1' ||
     process.env.FN_LOGS_DISABLED === '1';
 
-  if (disabled) {
+  if (disabled || !instrumentationState.enabled) {
     instrumentationState.enabled = false;
-    console.log('[fn-log] Function logging disabled via env.');
+    console.log('[fn-log] Function logging disabled.');
   } else {
     const backendRoot = path.resolve(__dirname, '..');
     const suppressedLabels = new Set([
       'ai/learning/MemoryConsolidationEngine.js::getQueueSize',
       'ai/memory/npcRepository.js::updateNpcProfile',
       'ai/scheduler/NpcInitiativeEngine.js::checkForInitiative',
+      'routes/group.js::default', // suppress noisy group route logs
     ]);
+    const suppressedPrefixes = [
+      'routes/group.js', // mute all group route function logs
+    ];
     const wrappedFns = new WeakSet();
     const wrappedExports = new WeakSet();
 
@@ -73,7 +78,13 @@ if (global.__AUTO_FUNCTION_LOGGER__) {
       const wrapped = new Proxy(fn, {
         apply(target, thisArg, argArray) {
           try {
-            if (!suppressedLabels.has(label)) {
+            if (!instrumentationState.enabled) {
+              return Reflect.apply(target, thisArg, argArray);
+            }
+            const isSuppressed =
+              suppressedLabels.has(label) ||
+              suppressedPrefixes.some((p) => label.startsWith(p));
+            if (!isSuppressed) {
               console.log(`[fn] ${label}(${formatArgs(argArray)})`);
             }
           } catch (err) {
@@ -83,7 +94,13 @@ if (global.__AUTO_FUNCTION_LOGGER__) {
         },
         construct(target, argArray, newTarget) {
           try {
-            if (!suppressedLabels.has(label)) {
+            if (!instrumentationState.enabled) {
+              return Reflect.construct(target, argArray, newTarget);
+            }
+            if (
+              !suppressedLabels.has(label) &&
+              !suppressedPrefixes.some((p) => label.startsWith(p))
+            ) {
               console.log(`[fn:new] ${label}(${formatArgs(argArray)})`);
             }
           } catch (err) {

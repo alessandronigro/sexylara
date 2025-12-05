@@ -6,6 +6,10 @@
 
 const ContextBuilder = require('./ContextBuilder');
 const { think } = require('../brain/BrainEngine');
+const GroupTurnEngine = require('../brain/GroupTurnEngine');
+const PromptBuilder = require('../generation/PromptBuilder'); // or new GroupPromptBuilder
+const { veniceSafeCall } = require('../generation/VeniceSafeCall');
+const GroupLogContext = require('../../utils/GroupLogContext');
 const { think: thinkGroup } = require('../brain/GroupBrainEngine');
 const { getNpcProfile } = require('../memory/npcRepository');
 const { supabase } = require('../../lib/supabase');
@@ -75,16 +79,19 @@ async function routeChat(request) {
  * @param {Object} request - { userId, groupId, message, invokedNpcId }
  * @returns {Object} - { responses: [{npcId, text}], updatedStates }
  */
-async function routeGroupChat(request) {
-  const {
-    userId,
+async function routeGroupChat(ctx) {
+  const { groupId, userId, message, invokedNpcId = null, npcMembers: providedNpcMembers = null, history = [], options = {} } = ctx;
+  const logPrefix = GroupLogContext.get(groupId, userId, 'ROUTE');
+
+  console.log(`${logPrefix} 🧠 AICoreRouter: Routing Group Chat`, {
     groupId,
-    message,
-    invokedNpcId = null,
-    npcMembers: providedNpcMembers = null,
-    history = [],
-    options = {}
-  } = request;
+    userId,
+    messageLen: message?.length,
+    historyCount: history?.length,
+    npcCount: providedNpcMembers?.length,
+    npcNames: providedNpcMembers ? providedNpcMembers.map(n => n.name).join(', ') : 'N/A',
+    invokedNpcId
+  });
 
   // Validazione
   if (!userId || !groupId || !message) {

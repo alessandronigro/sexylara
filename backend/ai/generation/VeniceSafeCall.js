@@ -1,123 +1,74 @@
-const Replicate = require("replicate");
+const OpenAI = require("openai");
 
 /**
- * VeniceSafeCall – wrapper universale per GPT-5/Venice via Replicate API 2025
+ * VeniceSafeCall – Native Venice API call via OpenAI client
  */
 async function veniceSafeCall(model, input) {
   try {
-    input = input || {};
-    // ============ SANITIZZAZIONE ============
-    if (input.messages) {
-      if (!Array.isArray(input.messages)) input.messages = [];
-
-      input.messages = input.messages
-        .filter(m => m && m.role && m.content)
-        .map(m => ({
-          role: String(m.role),
-          content: String(m.content),
-        }));
-    } else {
-      input.messages = [];
-    }
-
-    if (input.prompt && typeof input.prompt !== "string") {
-      input.prompt = String(input.prompt);
-    }
-
-    if (!Array.isArray(input.image_input)) {
-      input.image_input = [];
-    }
-
-    input.verbosity = input.verbosity || "medium";
-    input.reasoning_effort = input.reasoning_effort || "low";
-
-    // ============ PREPARAZIONE CLIENT E PROMPT ============
-    const apiKey = process.env.REPLICATE_API_KEY || process.env.REPLICATE_API_TOKEN;
+    const apiKey = process.env.API_VENICE;
     if (!apiKey) {
-      throw new Error("Missing Replicate API key (REPLICATE_API_KEY or REPLICATE_API_TOKEN)");
+      console.error("Missing API_VENICE");
+      return "[VENICE_ERROR]";
     }
-    const replicate = new Replicate({ auth: apiKey });
 
-    const systemPrompt = (input.messages.find(m => m.role === "system")?.content || "").trim();
-    const dialogue = (input.messages || [])
-      .filter(m => m.role !== "system")
-      .map(m => {
-        const speaker = m.role === "assistant" ? "Assistant" : "User";
-        return `${speaker}: ${m.content}`;
-      })
-      .join("\n");
-    const prompt = dialogue ? `${dialogue}\nAssistant:` : "Assistant:";
+    // Default to the provided address, cleaning it if it includes the endpoint path
+    let baseURL = process.env.ADDRESS_VENICE || "https://api.venice.ai/api/v1";
+    if (baseURL.endsWith("/chat/completions")) {
+      baseURL = baseURL.replace(/\/chat\/completions\/?$/, "");
+    }
 
-    const payload = {
-      prompt,
-      system_prompt: systemPrompt || "You are a helpful assistant.",
-      temperature: input.temperature ?? 0.7,
-      max_new_tokens: input.max_tokens ?? input.max_new_tokens ?? 500,
-      top_p: input.top_p ?? 0.9,
+    const client = new OpenAI({
+      apiKey: apiKey,
+      baseURL: baseURL
+    });
+
+    // Construct Venice parameters with overrides
+    const veniceParams = {
+      include_venice_system_prompt: false,
+      strip_thinking_response: input.strip_thinking ?? true,
+      disable_thinking: input.disable_thinking ?? true,
+      enable_web_search: input.venice_websearch ? "on" : "off",
+      enable_web_scraping: false,
+      enable_web_citations: false
     };
 
-    // ============ CHIAMATA STREAMING REPLICATE ============
-    const candidates = [];
-    if (model) candidates.push(model);
-    if (model && !model.includes(":")) candidates.push(`${model}:latest`);
+    const modelToUse = model || process.env.MODEL_VENICE || "venice-uncensored";
 
-    let output = "";
-    let lastErr = null;
-    for (const candidate of candidates) {
-      try {
-        let buffer = "";
-        const stream = await replicate.stream(candidate, { input: payload });
-        for await (const event of stream) {
-          if (typeof event === "string") {
-            buffer += event;
-          } else if (event?.output) {
-            buffer += Array.isArray(event.output) ? event.output.join("") : String(event.output);
-          }
-        }
-        output = buffer;
-        console.log(`[VeniceSafeCall] model ok: ${candidate}`);
-        break;
-      } catch (streamErr) {
-        lastErr = streamErr;
-        const status = streamErr?.response?.status || streamErr?.status;
-        console.warn("⚠️ VeniceSafeCall stream fallback:", streamErr?.message || streamErr, 'status:', status, 'model:', candidate);
-        try {
-          const res = await replicate.run(candidate, { input: payload });
-          if (Array.isArray(res)) output = res.join("");
-          else if (typeof res === "string") output = res;
-          else if (res?.output) output = Array.isArray(res.output) ? res.output.join("") : String(res.output);
-          else output = String(res || "");
-          console.log(`[VeniceSafeCall] run fallback ok: ${candidate}`);
-          break;
-        } catch (runErr) {
-          lastErr = runErr;
-          const runStatus = runErr?.response?.status || runErr?.status;
-          console.warn("⚠️ VeniceSafeCall run failed:", runErr?.message || runErr, 'status:', runStatus, 'model:', candidate);
-          if (runStatus !== 404 && runStatus !== 422) {
-            throw runErr;
-          }
-        }
-      }
+    console.log(`VeniceSafeCall: calling model=${modelToUse} at ${baseURL}`);
+
+    const completion = await client.chat.completions.create({
+      model: modelToUse,
+      messages: input.messages,
+      temperature: input.temperature ?? 0.7,
+      max_tokens: input.max_tokens ?? 500,
+      venice_parameters: veniceParams
+    });
+
+    const content = completion.choices[0]?.message?.content;
+    const usage = completion.usage;
+
+    console.log(`[VeniceSafeCall] 🏁 Response received`, {
+      model: modelToUse,
+      inputTokens: usage?.prompt_tokens,
+      outputTokens: usage?.completion_tokens,
+      totalTokens: usage?.total_tokens,
+      finishReason: completion.choices[0]?.finish_reason,
+      contentLength: content?.length,
+      rawPreview: content ? content.substring(0, 300) : 'NULL'
+    });
+
+    if (!content) {
+      console.warn("[VeniceSafeCall] Empty content received");
+      return "[VENICE_ERROR]"; // Or empty string? Prompt says "[VENICE_ERROR]" on error.
     }
 
-    if (!output && lastErr) {
-      throw lastErr;
-    }
-
-    const cleaned = (output || "").toString().trim();
-    if (!cleaned) {
-      const warnMsg = `[VeniceSafeCall] Empty output after all candidates. Returning [EMPTY_RESPONSE]. Models tried: ${candidates.join(', ')}`;
-      console.warn(warnMsg);
-      try { require('../../utils/log')(`${warnMsg} | prompt="${prompt.slice(0,200)}..."`); } catch (e) {}
-      return "[EMPTY_RESPONSE]";
-    }
-
-    try { require('../../utils/log')(`[VeniceSafeCall] ok model=${candidates[0]} len=${cleaned.length}`); } catch (e) {}
-    return cleaned;
+    return content;
 
   } catch (err) {
-    const status = err?.response?.status || err?.status;
-    console.error("❌ VeniceSafeCall ERROR:", err?.message || err, 'status:', status);
+    console.error(`[VeniceSafeCall] ❌ CRITICAL ERROR calling ${model}`, err?.message || err);
+    if (err.response) {
+      console.error(`[VeniceSafeCall] API Response Data:`, err.response.data);
+    }
     return "[VENICE_ERROR]";
   }
 }

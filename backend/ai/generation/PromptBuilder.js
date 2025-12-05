@@ -16,6 +16,18 @@ function buildPrompt(context) {
     null;
   const groupMembers = context.group_members || context.groupContext?.members || [];
 
+  if (groupMeta) {
+    console.log(`[PromptBuilder] 👥 Group Mode Active for NPC: ${npc.name} (${npc.id})`, {
+      memberCount: groupMeta.memberCount,
+      humanCount: groupMeta.humanCount,
+      aiCount: groupMeta.aiCount,
+      systemPromptOverride: !!promptSystem,
+      lifeCorePresent: !!lifeCore,
+      historyLength: history.length,
+      modelUsed: context.model || 'default'
+    });
+  }
+
   // Sintesi gruppo basata su groupMeta
   let groupBlock = '';
   if (groupMeta && typeof groupMeta.memberCount === 'number') {
@@ -54,7 +66,7 @@ function buildPrompt(context) {
     const urges = lifeCore.socialUrges || {};
     const nowBlock = timeContext?.today ? `\n[CONTESTO TEMPO]\ndata: ${timeContext.today} ora: ${timeContext.hour || '?'} (${timeContext.partOfDay || ''})` : '';
     const worldBlock = worldContext && (worldContext.weather || (worldContext.festivities || []).length || (worldContext.news || []).length)
-      ? `\n[MONDO]\nmeteo: ${worldContext.weather ? JSON.stringify(worldContext.weather) : 'n/d'}\nfestività: ${(worldContext.festivities || []).join(', ') || 'none'}\nnews: ${(worldContext.news || []).slice(0,2).map((n) => n.title || n).join(' | ') || 'none'}`
+      ? `\n[MONDO]\nmeteo: ${worldContext.weather ? JSON.stringify(worldContext.weather) : 'n/d'}\nfestività: ${(worldContext.festivities || []).join(', ') || 'none'}\nnews: ${(worldContext.news || []).slice(0, 2).map((n) => n.title || n).join(' | ') || 'none'}`
       : '';
     identityBlock = `[IDENTITÀ NPC]
 nome: ${id.name || npc.name || 'Sconosciuta'}
@@ -89,7 +101,7 @@ coerenza_identita: non contraddire mai origine/nascita (${id.birthplace || id.or
   }
 
   const initiativeBlock = context.initiative
-    ? `\n[INIZIATIVA]\nreason: ${context.initiative.reason || 'initiative'}\nfuture_event: ${context.initiative.futureEvent?.userMessageExtract || context.initiative.futureEvent?.type || 'nessuno'}` 
+    ? `\n[INIZIATIVA]\nreason: ${context.initiative.reason || 'initiative'}\nfuture_event: ${context.initiative.futureEvent?.userMessageExtract || context.initiative.futureEvent?.type || 'nessuno'}`
     : '';
 
   // Fallback system prompt minimale
@@ -107,6 +119,11 @@ Rispondi all'utente in modo naturale e coerente con la tua identità.`;
 
   if (identityBlock) {
     console.log('[PromptBuilder] Using NPC System Prompt Override');
+  }
+
+  if (groupMeta) {
+    console.log(`[PromptBuilder] 📜 Final Prompt Preview (First 3 lines):`);
+    console.log(fallbackSystem.split('\n').slice(0, 3).join('\n'));
   }
 
   return fallbackSystem;

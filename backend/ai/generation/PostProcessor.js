@@ -142,6 +142,12 @@ function process(output, context) {
   // 1. Filter banned phrases
   let cleaned = filterBannedPhrases(output);
 
+  console.log('[PostProcessor] 📜 Processing text:', {
+    original: output,
+    cleaned: cleaned,
+    toneMode
+  });
+
   // 2. Limit questions
   cleaned = limitQuestions(cleaned);
 
@@ -178,6 +184,7 @@ function process(output, context) {
 
   return {
     text: finalized,
+    originalText: output, // useful for debugging
     mediaRequest,
     actions
   };

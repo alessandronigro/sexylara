@@ -6,6 +6,7 @@ const { buildSceneContext } = require('./SceneEngine');
 const { selectResponders } = require('./GroupTurnEngine');
 const { evaluateGroupInitiative } = require('../group/GroupInitiativeEngine');
 const { addGossip } = require('../group/GroupMemoryStore');
+const GroupLogContext = require('../../utils/GroupLogContext');
 
 function normalizeHistory(history = [], npcId) {
   return history.map((h) => {
@@ -62,21 +63,25 @@ async function think(context) {
   console.log('[GroupBrainEngine] think called with:', {
     npcMembersCount: context.npcMembers?.length || 0,
     respondersCount: responders.length,
-    responderIds: responders.map(r => r.id || r.name)
+    responderIds: responders.selected.map(r => r.id || r.name), // updated to responders.selected
+    reason: responders.reason
   });
 
+  const logPrefix = GroupLogContext.get(context.groupId, context.userId, 'BRAIN');
+  const selectedResponders = responders.selected || [];
+
   // Only warn if there are AI members but no responders selected (should not happen with new logic)
-  if (!responders.length && context.npcMembers && context.npcMembers.length > 0) {
-    console.warn('[GroupBrainEngine] No responders selected despite having AI members');
+  if (!selectedResponders.length && context.npcMembers && context.npcMembers.length > 0) {
+    console.warn(`${logPrefix} [GroupBrainEngine] No responders selected despite having AI members (Reason: ${responders.reason})`);
   }
 
   const replies = [];
 
   // Generate replies for each responder
-  for (const npc of responders) {
-    console.log('[GroupBrainEngine] Generating reply for NPC:', npc.id || npc.name);
+  for (const npc of selectedResponders) {
+    console.log(`${logPrefix} [GroupBrainEngine] Generating reply for NPC: ${npc.name} (${npc.id})`);
     const reply = await generateForNpc(npc, context, scene);
-    console.log('[GroupBrainEngine] Generated reply:', { npcId: npc.id, hasText: !!reply?.text, text: reply?.text?.substring(0, 50) });
+    console.log(`${logPrefix} [GroupBrainEngine] Generated reply:`, { npcId: npc.id, hasText: !!reply?.text, textLen: reply?.text?.length, textPreview: reply?.text?.substring(0, 50) });
     if (reply && reply.text) replies.push(reply);
   }
 
