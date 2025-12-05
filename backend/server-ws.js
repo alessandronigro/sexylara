@@ -228,7 +228,13 @@ wss.on('connection', (ws, req) => {
   ws.npc_id = npcIdFromQuery;
   userSockets.set(userId, ws);
   ws.on('close', () => {
-    userSockets.delete(userId);
+    // Only delete if this is the current socket for the user
+    if (userSockets.get(userId) === ws) {
+      userSockets.delete(userId);
+      console.log(`🔌 WebSocket chiuso per utente ${userId} (cleaned up)`);
+    } else {
+      console.log(`🔌 WebSocket chiuso per utente ${userId} (ignored stale socket)`);
+    }
   });
 
   if (!globalSchedulerStarted) {
@@ -238,49 +244,56 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', async (msg) => {
     const sessionId = new Date().toISOString().slice(0, 10);
-    const parsed = JSON.parse(msg.toString());
-    const parsedNpcId = parsed.npc_id ? parsed.npc_id.toString() : null;
-
-    if (parsed.event === 'typing') {
-      const status = parsed.status || 'typing';
-      if (parsedNpcId) {
-        const recipientWs = userSockets.get(parsedNpcId);
-        if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-          recipientWs.send(JSON.stringify({
-            event: 'npc_status',
-            npcId: userId,
-            status,
-          }));
-        }
-      }
-      return;
-    }
-
-    const { text, traceId, npc_id, group_id, mediaType, mediaUrl } = parsed;
-    console.log('📨 Messaggio ricevuto:', { text, traceId, npc_id, group_id, mediaType, mediaUrl, userId });
+    const traceId = `trace_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     try {
+      const data = JSON.parse(msg);
+      console.log('🔍 RAW DATA FROM CLIENT:', JSON.stringify(data));
+
+      const { type, content, npc_id, group_id, mediaType, mediaUrl } = data;
+      const text = content || data.text || data.message || ''; // Try multiple field names
+      const parsedNpcId = npc_id ? npc_id.toString() : null;
+
+      console.log(`📨 Messaggio ricevuto:`, {
+        text,
+        traceId,
+        npc_id,
+        group_id,
+        mediaType,
+        mediaUrl,
+        userId
+      });
+
+      if (data.event === 'typing') {
+        const status = data.status || 'typing';
+        if (parsedNpcId) {
+          const recipientWs = userSockets.get(parsedNpcId);
+          if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
+            recipientWs.send(JSON.stringify({
+              event: 'npc_status',
+              npcId: userId,
+              status,
+            }));
+          }
+        }
+        return;
+      }
+
       // ========================================
       // GROUP CHAT HANDLING
       // ========================================
       if (group_id) {
         console.log('👥 Messaggio di gruppo rilevato:', group_id);
 
-        const intentLabel = await classifyIntent(text || '', 'user');
-        console.log('🧭 Detected intent user:', intentLabel);
-        let classifierMediaType = null;
-        switch (intentLabel) {
-          case 'request_image':
-            classifierMediaType = 'photo';
-            break;
-          case 'request_video':
-            classifierMediaType = 'video';
-            break;
-          case 'request_audio':
-            classifierMediaType = 'audio';
-            break;
-          default:
-            classifierMediaType = null;
+        // Recupera owner del gruppo per includerlo nella membership (non sempre è in group_members)
+        const { data: groupInfo, error: groupInfoError } = await supabase
+          .from('groups')
+          .select('user_id')
+          .eq('id', group_id)
+          .single();
+        const groupOwnerId = groupInfo?.user_id || null;
+        if (groupInfoError) {
+          console.error('⚠️ Impossibile recuperare owner del gruppo:', groupInfoError);
         }
 
         // Salva il messaggio dell'utente nel gruppo
@@ -308,14 +321,111 @@ wss.on('connection', (ws, req) => {
           isGroup: true
         }));
 
+        // 🚀 BROADCAST IMMEDIATO del messaggio utente a tutti gli altri membri
+        const { data: groupMembersRows, error: groupMembersError } = await supabase
+          .from('group_members')
+          .select('member_id, member_type')
+          .eq('group_id', group_id);
+
+        let groupMembers = groupMembersRows || [];
+        if (groupMembersError) {
+          console.error('❌ Errore recupero membri gruppo per broadcast:', groupMembersError);
+        }
+        if (groupOwnerId && !groupMembers.some(m => m.member_id === groupOwnerId)) {
+          groupMembers.push({ member_id: groupOwnerId, member_type: 'user', role: 'owner' });
+        }
+
+        console.log('🚀 BROADCAST_START: Members found:', groupMembers.length);
+
+        if (groupMembers.length) {
+          // Get sender profile for display
+          const { data: senderProfile } = await supabase
+            .from('user_profile')
+            .select('username, avatar_url')
+            .eq('id', userId)
+            .single();
+
+          // Send to all user members except the sender
+          const userMembers = groupMembers
+            .filter(m => m.member_type === 'user' && m.member_id !== userId)
+            .map(m => m.member_id);
+
+          console.log('🚀 BROADCAST_TARGETS:', JSON.stringify(userMembers));
+
+          for (const memberId of userMembers) {
+            const memberWs = userSockets.get(memberId);
+            const isConnected = memberWs && memberWs.readyState === WebSocket.OPEN;
+
+            if (isConnected) {
+              const payload = {
+                traceId,
+                type: 'group_message',
+                content: text,
+                sender_id: userId,
+                sender_name: senderProfile?.username || 'User',
+                avatar: senderProfile?.avatar_url,
+                group_id,
+                messageId: savedGroupMessage.id,
+                timestamp: new Date().toISOString()
+              };
+              memberWs.send(JSON.stringify(payload));
+              console.log(`🚀 BROADCAST_SENT to ${memberId}`);
+            } else {
+              console.log(`⚠️ BROADCAST_SKIP: Member ${memberId} not connected`);
+            }
+          }
+        }
+
+        // Ora classifica intent e processa AI
+        const intentLabel = await classifyIntent(text || '', 'user');
+        console.log('🧭 Detected intent user:', intentLabel);
+        let classifierMediaType = null;
+        switch (intentLabel) {
+          case 'request_image':
+            classifierMediaType = 'photo';
+            break;
+          case 'request_video':
+            classifierMediaType = 'video';
+            break;
+          case 'request_audio':
+            classifierMediaType = 'audio';
+            break;
+          default:
+            classifierMediaType = null;
+        }
+
         // Recupera i membri del gruppo (supporta sia user che npc)
-        const { data: members, error: membersError } = await supabase
+        const { data: membersRows, error: membersError } = await supabase
           .from('group_members')
           .select('member_id, member_type, npc_id, role, npcs(id, name, avatar_url, group_behavior_profile)')
           .eq('group_id', group_id);
 
-        if (membersError || !members || members.length === 0) {
+        if (membersError) {
           console.error('❌ Errore recupero membri gruppo:', membersError);
+          ws.send(JSON.stringify({
+            traceId,
+            role: 'system',
+            type: 'error',
+            content: 'Nessun membro AI trovato nel gruppo',
+            group_id
+          }));
+          ws.send(JSON.stringify({ traceId, end: true }));
+          return;
+        }
+
+        let members = membersRows || [];
+        if (groupOwnerId && !members.some(m => m.member_id === groupOwnerId)) {
+          members.push({
+            member_id: groupOwnerId,
+            member_type: 'user',
+            npc_id: null,
+            role: 'owner',
+            npcs: null
+          });
+        }
+
+        if (members.length === 0) {
+          console.error('❌ Nessun membro trovato nel gruppo (anche dopo fallback owner)');
           ws.send(JSON.stringify({
             traceId,
             role: 'system',
@@ -585,25 +695,36 @@ wss.on('connection', (ws, req) => {
             userId,
             message: text,
             history: historyForAi,
+            npcMembers,
             invokedNpcId,
             options: { rawMessage: text }
           });
 
 
           const replies = result?.responses || [];
+          console.log('[server-ws] Group chat replies received:', { count: replies.length, replies: replies.map(r => ({ npcId: r?.npcId, hasOutput: !!(r?.output || r?.text) })) });
           const npcLookup = npcMembers.reduce((acc, n) => { acc[n.id] = n; return acc; }, {});
+          console.error('[server-ws] ⚠️ ABOUT TO PROCESS REPLIES - npcLookup keys:', Object.keys(npcLookup), 'replies count:', replies.length);
 
           for (const resp of replies) {
+            console.error('[server-ws] ⚠️ LOOP ITERATION - Processing reply:', { hasResp: !!resp, npcId: resp?.npcId });
+            console.log('[server-ws] Processing reply:', { hasResp: !!resp, npcId: resp?.npcId });
+            console.error('[server-ws] ⚠️ BEFORE RESP CHECK');
             if (!resp) continue;
+            console.error('[server-ws] ⚠️ AFTER RESP CHECK - extracting output');
             const output = resp.output || resp.text;
+            console.error('[server-ws] ⚠️ Output extracted:', { hasOutput: !!output, length: output?.length });
             if (!output) continue;
             const ai = npcLookup[resp.npcId] || { id: resp.npcId, name: 'NPC' };
+            console.error('[server-ws] ⚠️ AI found:', { aiId: ai.id, aiName: ai.name, foundInLookup: !!npcLookup[resp.npcId] });
 
             const baseDelay = 1500;
             const charDelay = 30;
             const typingDelay = baseDelay + (output.length * charDelay);
+            console.log('[server-ws] Waiting typing delay:', typingDelay, 'ms');
             await new Promise(resolve => setTimeout(resolve, typingDelay));
 
+            console.log('[server-ws] Saving AI message to DB...');
             // Salva risposta
             const { data: aiMessage, error: aiMsgError } = await supabase
               .from('group_messages')
@@ -622,6 +743,8 @@ wss.on('connection', (ws, req) => {
               continue;
             }
 
+            console.error('[server-ws] ⚠️ AI message saved:', aiMessage?.id);
+            console.error('[server-ws] ⚠️ Sending to original sender...');
             ws.send(JSON.stringify({
               traceId,
               role: 'assistant',
@@ -633,6 +756,40 @@ wss.on('connection', (ws, req) => {
               group_id,
               messageId: aiMessage.id
             }));
+
+            // Broadcast AI response to all other group members
+            console.error('[server-ws] ⚠️ fullMembers:', fullMembers.map(m => ({ id: m.id, type: m.type, name: m.name })));
+            console.error('[server-ws] ⚠️ Current userId (sender):', userId);
+            const otherUserMembers = fullMembers
+              .filter(m => m.type === 'user' && m.id !== userId)
+              .map(m => m.id);
+
+            console.error('[server-ws] ⚠️ Broadcasting to other members:', otherUserMembers);
+            console.error('[server-ws] ⚠️ Currently connected users:', Array.from(userSockets.keys()));
+            for (const memberId of otherUserMembers) {
+              const memberWs = userSockets.get(memberId);
+              console.error(`[server-ws] ⚠️ Checking member ${memberId}:`, {
+                hasWs: !!memberWs,
+                readyState: memberWs?.readyState,
+                isOpen: memberWs?.readyState === WebSocket.OPEN
+              });
+              if (memberWs && memberWs.readyState === WebSocket.OPEN) {
+                memberWs.send(JSON.stringify({
+                  traceId,
+                  role: 'assistant',
+                  type: 'group_message',
+                  content: output,
+                  sender_id: ai.id,
+                  sender_name: ai.name,
+                  avatar: resolveAvatar(ai),
+                  group_id,
+                  messageId: aiMessage.id
+                }));
+                console.error(`[server-ws] ✅ Broadcast sent to member ${memberId}`);
+              } else {
+                console.error(`[server-ws] ⚠️ Member ${memberId} not connected or socket not open`);
+              }
+            }
 
             responseCount++;
             console.log(`✅ ${ai.name} ha risposto: ${output.substring(0, 50)}...`);
@@ -816,14 +973,6 @@ wss.on('connection', (ws, req) => {
             // Fetch sender profile for display
             const { data: senderProfile } = await supabase.from('user_profile').select('username, avatar_url').eq('id', userId).single();
 
-            if (statusHint) {
-              recipientWs.send(JSON.stringify({
-                event: 'npc_status',
-                npcId: userId,
-                status: statusHint,
-              }));
-            }
-
             console.log(`📤 Forwarding message to recipient ${recipientUser.id}`);
             recipientWs.send(JSON.stringify({
               traceId: `user_msg_${Date.now()}`,
@@ -838,13 +987,13 @@ wss.on('connection', (ws, req) => {
               timestamp: new Date().toISOString(),
               serverId: savedUserMessage.id
             }));
-            if (statusHint) {
-              recipientWs.send(JSON.stringify({
-                event: 'npc_status',
-                npcId: userId,
-                status: '',
-              }));
-            }
+
+            // Send end event to recipient to stop loading
+            recipientWs.send(JSON.stringify({
+              traceId: `user_msg_${Date.now()}`,
+              end: true
+            }));
+
             console.log(`✅ Message forwarded to ${recipientUser.username}`);
           } else {
             console.log(`⚠️ Recipient ${recipientUser.username} is not connected`);
@@ -1786,7 +1935,7 @@ async function updateGroupMemory(groupId) {
   }
 }
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORTWS || 5001;
 server.listen(PORT, () => {
   console.log(`🔌 WebSocket server attivo su ws://localhost:${PORT}/ws`);
   console.log('👥 Supporto chat di gruppo abilitato');

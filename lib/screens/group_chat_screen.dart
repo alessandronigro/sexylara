@@ -36,6 +36,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   bool _isConnected = false;
   String _currentStatus = '';
   final Set<String> _memberIds = {};
+  final Set<String> _invitedIds = {}; // Track invited but not yet accepted members
   List<Npc> _availableNpcs = [];
   List<ThrillerContact> _contacts = [];
   bool _addingMembers = false;
@@ -88,23 +89,33 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         // Message acknowledged
         print('✅ Group message acknowledged');
       } else if (data['type'] == 'group_message') {
-        // AI response received
-        final aiMessage = {
+        // Group message received (from AI or other users)
+        final userId = SupabaseService.currentUser?.id;
+        final senderId = data['sender_id'];
+        final isFromCurrentUser = senderId == userId;
+        
+        // Don't add message if it's from current user (already added optimistically)
+        if (isFromCurrentUser) {
+          print('⏭️ Skipping own message (already in UI)');
+          return;
+        }
+        
+        final groupMessage = {
           'id': data['messageId'],
           'content': data['content'],
-          'sender_id': data['sender_id'],
+          'sender_id': senderId,
           'sender_name': data['sender_name'],
-          'avatar': data['avatar'], // ← Avatar aggiunto
+          'avatar': data['avatar'],
           'type': 'text',
-          'created_at': DateTime.now().toIso8601String(),
-          'is_ai': true,
+          'created_at': data['timestamp'] ?? DateTime.now().toIso8601String(),
+          'is_ai': data['role'] == 'assistant', // AI if role is assistant, otherwise user
         };
         
         setState(() {
-          _messages.add(aiMessage);
+          _messages.add(groupMessage);
         });
         _scrollToBottom();
-        print('🤖 AI response from ${data['sender_name']}: ${data['content']}');
+        print('📨 Group message from ${data['sender_name']}: ${data['content']}');
       } else if (data['end'] == true) {
         // Conversation ended
         print('✅ Group conversation completed: ${data['totalResponses']} responses');
@@ -348,8 +359,11 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   Future<void> _addContactToGroup(ThrillerContact c) async {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) return;
-    if (_memberIds.contains(c.id)) return;
-    setState(() => _addingMembers = true);
+    if (_memberIds.contains(c.id) || _invitedIds.contains(c.id)) return;
+    setState(() {
+      _addingMembers = true;
+      _invitedIds.add(c.id); // Mark as invited immediately for UI feedback
+    });
     try {
       final groupService = GroupService(userId: userId);
       if (c.type == 'user') {
@@ -362,6 +376,8 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       );
       await _loadGroupInfo();
     } catch (e) {
+      // Remove from invited if error occurred
+      setState(() => _invitedIds.remove(c.id));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Errore invito: $e')),
       );
@@ -373,7 +389,11 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   Future<void> _addNpcToGroup(String npcId) async {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null || npcId.isEmpty) return;
-    setState(() => _addingMembers = true);
+    if (_memberIds.contains(npcId) || _invitedIds.contains(npcId)) return;
+    setState(() {
+      _addingMembers = true;
+      _invitedIds.add(npcId); // Mark as invited immediately for UI feedback
+    });
     try {
       final groupService = GroupService(userId: userId);
       await groupService.inviteNpc(groupId: widget.groupId, npcId: npcId);
@@ -382,6 +402,8 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       );
       await _loadGroupInfo();
     } catch (e) {
+      // Remove from invited if error occurred
+      setState(() => _invitedIds.remove(npcId));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Errore invito Thriller: $e')),
       );
@@ -422,6 +444,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                           itemBuilder: (_, idx) {
                             final c = _contacts[idx];
                             final already = _memberIds.contains(c.id);
+                            final invited = _invitedIds.contains(c.id);
                             final isNpc = c.type == 'npc';
                             return ListTile(
                               leading: CircleAvatar(
@@ -430,10 +453,16 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                                 child: c.avatar == null ? Icon(isNpc ? Icons.smart_toy : Icons.person, color: Colors.white) : null,
                               ),
                               title: Text(c.name, style: const TextStyle(color: Colors.white)),
-                              subtitle: Text(isNpc ? 'Thriller' : 'Utente', style: TextStyle(color: Colors.grey[600])),
+                              subtitle: Text(
+                                invited ? 'Invitato' : (isNpc ? 'Thriller' : 'Utente'),
+                                style: TextStyle(color: invited ? Colors.orangeAccent : Colors.grey[600]),
+                              ),
                               trailing: IconButton(
-                                icon: Icon(already ? Icons.check : Icons.person_add_alt, color: already ? Colors.greenAccent : Colors.pinkAccent),
-                                onPressed: already || _addingMembers ? null : () => _addContactToGroup(c),
+                                icon: Icon(
+                                  already ? Icons.check : (invited ? Icons.schedule : Icons.person_add_alt),
+                                  color: already ? Colors.greenAccent : (invited ? Colors.orangeAccent : Colors.pinkAccent),
+                                ),
+                                onPressed: already || invited || _addingMembers ? null : () => _addContactToGroup(c),
                               ),
                             );
                           },
@@ -454,6 +483,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                           itemBuilder: (_, idx) {
                             final npc = _availableNpcs[idx];
                             final already = _memberIds.contains(npc.id);
+                            final invited = _invitedIds.contains(npc.id);
                             return ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: Colors.grey[800],
@@ -461,10 +491,16 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                                 child: npc.avatarUrl == null ? const Icon(Icons.smart_toy, color: Colors.white) : null,
                               ),
                               title: Text(npc.name, style: const TextStyle(color: Colors.white)),
-                              subtitle: Text(npc.displayDescription, style: TextStyle(color: Colors.grey[600])),
+                              subtitle: Text(
+                                invited ? 'Invitato' : npc.displayDescription,
+                                style: TextStyle(color: invited ? Colors.orangeAccent : Colors.grey[600]),
+                              ),
                               trailing: IconButton(
-                                icon: Icon(already ? Icons.check : Icons.person_add_alt, color: already ? Colors.greenAccent : Colors.pinkAccent),
-                                onPressed: already || _addingMembers ? null : () => _addNpcToGroup(npc.id),
+                                icon: Icon(
+                                  already ? Icons.check : (invited ? Icons.schedule : Icons.person_add_alt),
+                                  color: already ? Colors.greenAccent : (invited ? Colors.orangeAccent : Colors.pinkAccent),
+                                ),
+                                onPressed: already || invited || _addingMembers ? null : () => _addNpcToGroup(npc.id),
                               ),
                             );
                           },

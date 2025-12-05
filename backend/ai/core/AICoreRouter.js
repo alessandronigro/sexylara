@@ -81,6 +81,7 @@ async function routeGroupChat(request) {
     groupId,
     message,
     invokedNpcId = null,
+    npcMembers: providedNpcMembers = null,
     history = [],
     options = {}
   } = request;
@@ -93,18 +94,40 @@ async function routeGroupChat(request) {
   // 1. Load group members
   const { data: members } = await supabase
     .from('group_members')
-    .select('member_id, member_type, role')
+    .select('member_id, member_type, npc_id, role')
     .eq('group_id', groupId);
 
   if (!members || members.length === 0) {
     throw new Error(`Group ${groupId} not found or empty`);
   }
 
-  // 2. Build context per gruppo
+  // 2. Use provided npcMembers or load from database
+  let npcMembers = providedNpcMembers;
+
+  if (!npcMembers || npcMembers.length === 0) {
+    // Fallback: Load NPC data for AI members
+    const npcIds = members
+      .filter(m => m.member_type === 'npc' || m.member_type === 'ai')
+      .map(m => m.npc_id || m.member_id);
+
+    const { data: npcData } = await supabase
+      .from('npcs')
+      .select('id, name, gender, personality_type, tone, age, ethnicity, hair_color, eye_color, body_type, avatar_url, face_image_url, group_behavior_profile')
+      .in('id', npcIds.length ? npcIds : ['00000000-0000-0000-0000-000000000000']);
+
+    npcMembers = (npcData || []).map(npc => ({
+      ...npc,
+      group_behavior: npc.group_behavior_profile || {},
+      groupBehavior: npc.group_behavior_profile || {}
+    }));
+  }
+
+  // 3. Build context per gruppo
   const context = await ContextBuilder.build({
     userId,
     groupId,
     members,
+    npcMembers,
     message,
     history,
     invokedNpcId,
@@ -112,12 +135,12 @@ async function routeGroupChat(request) {
   });
 
   // 3. Think Group (GroupBrainEngine)
-  const result = await thinkGroup(context);
+  const replies = await thinkGroup(context);
 
   // 4. Return structured output
   return {
-    responses: result.responses || [],
-    updatedStates: result.updatedStates || {},
+    responses: replies || [],
+    updatedStates: {},
     groupId,
     userId
   };

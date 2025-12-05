@@ -88,6 +88,25 @@ const requireGroupPermission = (action) => {
         // Attach userId to request for convenience
         req.userId = userId;
 
+        // OWNER BYPASS: Owner always has invite permissions
+        if (action === 'invite_user' || action === 'invite_npc') {
+            try {
+                const { data: group, error: groupError } = await supabase
+                    .from('groups')
+                    .select('user_id')
+                    .eq('id', groupId)
+                    .single();
+
+                if (!groupError && group && group.user_id === userId) {
+                    // Owner has permission, skip role check
+                    return next();
+                }
+            } catch (err) {
+                console.error('Error checking group ownership:', err);
+            }
+        }
+
+        // Standard permission check for non-owners or other actions
         const hasPermission = await checkPermission(userId, groupId, action);
         if (!hasPermission) {
             return res.status(403).json({ error: 'Insufficient permissions' });

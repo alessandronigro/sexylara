@@ -51,6 +51,7 @@ async function build(params) {
     history = [],
     groupId = null,
     members = [],
+    npcMembers = [],
     invokedNpcId = null,
     options = {}
   } = params;
@@ -182,6 +183,7 @@ async function build(params) {
     groupContext = {
       groupId,
       members: members || [],
+      npcMembers: npcMembers || [],
       invokedNpcId
     };
   }
@@ -257,6 +259,8 @@ ${baseSystem}${birthplaceLine}${nationalityLine}
 
     // Contesto addizionale
     groupContext,
+    npcMembers: params.npcMembers || [],
+    invokedNpcId: params.invokedNpcId || null,
     mediaContext,
     preferences,
     timeContext: buildTimeContext(),

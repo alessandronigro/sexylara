@@ -129,7 +129,7 @@ class GroupService {
     // Assuming backend has this endpoint or we need to add it. 
     // For now, let's assume standard GET /group/invites/pending
     final resp = await http.get(
-      Uri.parse('$_base/group/invites/pending'),
+      Uri.parse('$_base/api/group/invites/pending'),
       headers: {'x-user-id': userId},
     );
 

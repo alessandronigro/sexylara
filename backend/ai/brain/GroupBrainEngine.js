@@ -56,12 +56,25 @@ async function generateForNpc(npc, context, scene) {
 async function think(context) {
   const scene = buildSceneContext(context);
   const responders = selectResponders(context, scene);
-  if (!responders.length) {
-    console.warn('[GroupBrainEngine] No responders selected');
+
+  console.log('[GroupBrainEngine] think called with:', {
+    npcMembersCount: context.npcMembers?.length || 0,
+    respondersCount: responders.length,
+    responderIds: responders.map(r => r.id || r.name)
+  });
+
+  // Only warn if there are AI members but no responders selected (should not happen with new logic)
+  if (!responders.length && context.npcMembers && context.npcMembers.length > 0) {
+    console.warn('[GroupBrainEngine] No responders selected despite having AI members');
   }
+
   const replies = [];
+
+  // Generate replies for each responder
   for (const npc of responders) {
+    console.log('[GroupBrainEngine] Generating reply for NPC:', npc.id || npc.name);
     const reply = await generateForNpc(npc, context, scene);
+    console.log('[GroupBrainEngine] Generated reply:', { npcId: npc.id, hasText: !!reply?.text, text: reply?.text?.substring(0, 50) });
     if (reply && reply.text) replies.push(reply);
   }
 
@@ -74,9 +87,12 @@ async function think(context) {
     replies.push(...initiative.responses);
   }
 
-  if (!replies.length) {
-    console.warn('[GroupBrainEngine] No replies generated');
+  // Only warn if we expected replies but got none
+  if (!replies.length && responders.length > 0) {
+    console.warn('[GroupBrainEngine] No replies generated despite having responders');
   }
+
+  console.log('[GroupBrainEngine] Returning replies:', { count: replies.length, replies: replies.map(r => ({ npcId: r.npcId, hasText: !!r.text })) });
   return replies;
 }
 

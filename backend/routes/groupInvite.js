@@ -177,21 +177,8 @@ router.post('/group/invite', async (req, res) => {
       });
     }
 
-    // User invite handling (pending invite)
-    // Check if invite already exists
-    const { data: existingInvite } = await supabase
-      .from('group_invites')
-      .select('id, status')
-      .eq('group_id', groupId)
-      .eq('invited_id', invitedId)
-      .eq('invited_type', 'user')
-      .single();
 
-    if (existingInvite) {
-      if (existingInvite.status === 'pending') {
-        return res.status(409).json({ error: 'User already has a pending invite' });
-      }
-    }
+    // Create pending invite for NPC (auto-accepted)
 
     // Create pending invite
     const { data: invite, error: inviteErr } = await supabase
@@ -237,18 +224,138 @@ router.post('/group/invite/user', async (req, res) => {
     return res.status(401).json({ error: 'User not authenticated' });
   }
 
-  // Redirect to unified invite endpoint
-  req.body = {
-    groupId,
-    invitedId: receiverId,
-    invitedType: 'user'
-  };
+  if (!groupId || !receiverId) {
+    return res.status(400).json({ error: 'Missing groupId or receiverId' });
+  }
 
-  // Reuse the unified invite logic
-  return router.handle(
-    { ...req, method: 'POST', url: '/group/invite', body: req.body },
-    res
-  );
+  try {
+    // Check permissions
+    const hasPermission = await checkPermission(senderId, groupId, 'invite_user');
+
+    if (!hasPermission) {
+      return res.status(403).json({
+        error: 'Insufficient permissions. Only group owners and admins can invite users.'
+      });
+    }
+
+    // Check if already a member
+    const { data: existingMember } = await supabase
+      .from('group_members')
+      .select('id')
+      .eq('group_id', groupId)
+      .eq('member_id', receiverId)
+      .eq('member_type', 'user')
+      .single();
+
+    if (existingMember) {
+      return res.status(409).json({ error: 'already_in_group', code: 'USER_ALREADY_MEMBER' });
+    }
+
+
+    // Check for existing invite (comprehensive check below handles all cases)
+
+    // Check for existing invite
+    const { data: existingInvite } = await supabase
+      .from('group_invites')
+      .select('*')
+      .eq('group_id', groupId)
+      .eq('invited_id', receiverId)
+      .eq('invited_type', 'user')
+      .single();
+
+    let invite;
+
+    if (existingInvite) {
+      if (existingInvite.status === 'pending') {
+        return res.status(409).json({
+          error: 'already_invited',
+          code: 'INVITE_ALREADY_PENDING',
+          message: 'Questo utente ha già un invito pendente per questo gruppo'
+        });
+      }
+
+      if (existingInvite.status === 'declined') {
+        // Update existing declined invite to pending
+        const { data: updatedInvite, error: updateErr } = await supabase
+          .from('group_invites')
+          .update({
+            status: 'pending',
+            invited_by: senderId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingInvite.id)
+          .select()
+          .single();
+
+        if (updateErr) throw updateErr;
+        invite = updatedInvite;
+      } else if (existingInvite.status === 'accepted') {
+        return res.status(409).json({
+          error: 'User already in group',
+          message: 'Questo utente è già membro del gruppo'
+        });
+      }
+    } else {
+      // Create new invite
+      const { data: newInvite, error: inviteErr } = await supabase
+        .from('group_invites')
+        .insert({
+          group_id: groupId,
+          invited_id: receiverId,
+          invited_type: 'user',
+          invited_by: senderId,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (inviteErr) throw inviteErr;
+      invite = newInvite;
+    }
+
+    // Send WebSocket notification to invited user
+    const wsNotificationService = require('../services/wsNotificationService');
+    const { data: group } = await supabase
+      .from('groups')
+      .select('name')
+      .eq('id', groupId)
+      .single();
+
+    const { data: inviterProfile } = await supabase
+      .from('user_profile')
+      .select('username')
+      .eq('id', senderId)
+      .single();
+
+    wsNotificationService.sendInviteNotification(receiverId, {
+      id: invite.id,
+      group_id: groupId,
+      groupName: group?.name || 'un gruppo',
+      senderName: inviterProfile?.username || 'Un utente'
+    });
+
+    res.json({
+      success: true,
+      invited: 'user',
+      userId: receiverId,
+      status: 'pending',
+      inviteId: invite.id,
+      wasReInvite: !!existingInvite
+    });
+
+  } catch (error) {
+    console.error('Error inviting user:', error);
+
+    // Handle duplicate invite
+    if (error.code === '23505') {
+      return res.status(409).json({
+        error: 'Invite already exists',
+        message: 'Questo utente è già stato invitato a questo gruppo'
+      });
+    }
+
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ===============================================================
@@ -274,6 +381,21 @@ router.post('/group/invite/npc', async (req, res) => {
       });
     }
 
+    // Validate NPC exists and belongs to inviter
+    const { data: npc, error: npcError } = await supabase
+      .from('npcs')
+      .select('id, user_id, name')
+      .eq('id', npcId)
+      .single();
+
+    if (npcError || !npc) {
+      return res.status(404).json({ error: 'NPC not found', code: 'NPC_NOT_FOUND' });
+    }
+
+    if (npc.user_id !== senderId) {
+      return res.status(403).json({ error: 'forbidden', code: 'NPC_NOT_OWNED' });
+    }
+
     // Check if already a member
     const { data: existingMember } = await supabase
       .from('group_members')
@@ -284,22 +406,7 @@ router.post('/group/invite/npc', async (req, res) => {
       .single();
 
     if (existingMember) {
-      return res.status(409).json({ error: 'NPC already in group' });
-    }
-
-    // Validate NPC exists and belongs to inviter
-    const { data: npc, error: npcError } = await supabase
-      .from('npcs')
-      .select('id, user_id, name')
-      .eq('id', npcId)
-      .single();
-
-    if (npcError || !npc) {
-      return res.status(404).json({ error: 'NPC not found' });
-    }
-
-    if (npc.user_id !== senderId) {
-      return res.status(403).json({ error: 'You can only invite your own NPCs to groups' });
+      return res.status(409).json({ error: 'already_in_group', code: 'NPC_ALREADY_MEMBER' });
     }
 
     // Add NPC directly to group
@@ -348,7 +455,33 @@ router.post('/group/invite/respond', async (req, res) => {
 
   try {
     if (accept) {
+      // Get invite details before accepting
+      const { data: invite } = await supabase
+        .from('group_invites')
+        .select('*, groups(name)')
+        .eq('id', inviteId)
+        .single();
+
       await acceptInvite(inviteId, userId);
+
+      // Send notification to the user who sent the invite
+      if (invite && invite.invited_by) {
+        const wsNotificationService = require('../services/wsNotificationService');
+        const { data: acceptingUser } = await supabase
+          .from('user_profile')
+          .select('username')
+          .eq('id', userId)
+          .single();
+
+        wsNotificationService.sendGroupUpdateNotification(invite.invited_by, {
+          groupId: invite.group_id,
+          type: 'invite_accepted',
+          message: `${acceptingUser?.username || 'Un utente'} ha accettato il tuo invito a ${invite.groups?.name || 'il gruppo'}`,
+          acceptedBy: userId,
+          acceptedByName: acceptingUser?.username
+        });
+      }
+
       res.json({ success: true, message: 'Invite accepted' });
     } else {
       // Decline logic
@@ -454,16 +587,10 @@ router.get('/group/invites/pending', async (req, res) => {
   }
 
   try {
+    // Fetch invites
     const { data: invites, error } = await supabase
       .from('group_invites')
-      .select(`
-        *,
-        groups (
-          id,
-          name,
-          created_at
-        )
-      `)
+      .select('*')
       .eq('invited_id', userId)
       .eq('invited_type', 'user')
       .eq('status', 'pending')
@@ -471,7 +598,29 @@ router.get('/group/invites/pending', async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ invites });
+    // Fetch group details for each invite
+    if (invites && invites.length > 0) {
+      const groupIds = [...new Set(invites.map(inv => inv.group_id))];
+      const { data: groups } = await supabase
+        .from('groups')
+        .select('id, name, created_at')
+        .in('id', groupIds);
+
+      // Map groups to invites
+      const groupMap = (groups || []).reduce((acc, g) => {
+        acc[g.id] = g;
+        return acc;
+      }, {});
+
+      const enrichedInvites = invites.map(inv => ({
+        ...inv,
+        groups: groupMap[inv.group_id] || null
+      }));
+
+      return res.json({ invites: enrichedInvites });
+    }
+
+    res.json({ invites: [] });
   } catch (error) {
     console.error('Error fetching pending invites:', error);
     res.status(500).json({ error: error.message });
@@ -499,14 +648,22 @@ async function acceptInvite(inviteId, userId = null) {
   }
 
   // Aggiungi al gruppo
+  const memberData = {
+    group_id: invite.group_id,
+    member_id: invite.invited_id,
+    member_type: invite.invited_type,
+    role: 'member'
+  };
+
+  // Set npc_id ONLY for ai/npc types
+  if (invite.invited_type === 'ai' || invite.invited_type === 'npc') {
+    memberData.npc_id = invite.invited_id;
+  }
+  // For user type, npc_id will be NULL (which should be allowed after schema migration)
+
   const { error: memberErr } = await supabase
     .from('group_members')
-    .insert({
-      group_id: invite.group_id,
-      member_id: invite.invited_id,
-      member_type: invite.invited_type,
-      role: 'member'
-    });
+    .insert(memberData);
 
   if (memberErr) {
     // Se l'errore è per duplicato, ignora

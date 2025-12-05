@@ -22,12 +22,32 @@ router.post('/groups', async (req, res) => {
         if (!group || !group.id) {
             throw new Error('Group creation failed: no ID returned');
         }
-        // Insert members
-        if (Array.isArray(memberIds) && memberIds.length) {
-            const members = memberIds.map(id => ({ group_id: group.id, npc_id: id }));
-            const { error: memErr } = await supabase.from('group_members').insert(members);
+        // Inserisce l'owner anche in group_members (così compare sempre tra i membri)
+        const ownerRow = {
+            group_id: group.id,
+            member_id: userId,
+            member_type: 'user',
+            npc_id: null,
+            role: 'owner'
+        };
+
+        // Inserisce eventuali NPC iniziali
+        const npcRows = Array.isArray(memberIds)
+            ? memberIds.map(id => ({
+                group_id: group.id,
+                member_id: id,
+                member_type: 'npc',
+                npc_id: id,
+                role: 'member'
+            }))
+            : [];
+
+        const rowsToInsert = [ownerRow, ...npcRows].filter(Boolean);
+        if (rowsToInsert.length) {
+            const { error: memErr } = await supabase.from('group_members').insert(rowsToInsert);
             if (memErr) throw memErr;
         }
+
         res.json({ success: true, group });
     } catch (e) {
         console.error('Error creating group:', e);
@@ -35,18 +55,52 @@ router.post('/groups', async (req, res) => {
     }
 });
 
-// Get all groups belonging to the authenticated user
+// Get all groups belonging to the authenticated user (owned + joined)
 router.get('/groups', async (req, res) => {
     const userId = req.headers['x-user-id'];
     try {
-        const { data, error } = await supabase
+        // Get owned groups
+        const { data: ownedGroups, error: ownedErr } = await supabase
             .from('groups')
-            .select('id, name, created_at')
+            .select('id, name, created_at, user_id')
             .eq('user_id', userId)
             .order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json({ groups: data });
+
+        if (ownedErr) throw ownedErr;
+
+        // Get joined groups (where user is a member)
+        const { data: memberRows, error: memberErr } = await supabase
+            .from('group_members')
+            .select('group_id, groups(id, name, created_at, user_id)')
+            .eq('member_id', userId)
+            .eq('member_type', 'user');
+
+        if (memberErr) throw memberErr;
+
+        // Mark owned groups
+        const owned = (ownedGroups || []).map(g => ({
+            ...g,
+            isOwner: true
+        }));
+
+        // Mark joined groups
+        const joined = (memberRows || [])
+            .filter(m => m.groups) // Filter out null groups
+            .map(m => ({
+                ...m.groups,
+                isOwner: false
+            }));
+
+        // Combine all groups
+        const allGroups = [...owned, ...joined];
+
+        res.json({
+            groups: allGroups,
+            ownedGroups: owned,
+            joinedGroups: joined
+        });
     } catch (e) {
+        console.error('Error fetching groups:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -88,6 +142,50 @@ router.delete('/groups/:id', async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         console.error('Error deleting group:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Leave a group (remove self from membership)
+router.post('/groups/:id/leave', async (req, res) => {
+    const { id } = req.params;
+    const userId = req.headers['x-user-id'];
+
+    if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    try {
+        // Check if user is the owner
+        const { data: group, error: groupErr } = await supabase
+            .from('groups')
+            .select('user_id')
+            .eq('id', id)
+            .single();
+
+        if (groupErr && groupErr.code !== 'PGRST116') { // PGRST116 = not found
+            throw groupErr;
+        }
+
+        if (group && group.user_id === userId) {
+            return res.status(403).json({
+                error: 'Cannot leave a group you own. Delete the group instead.'
+            });
+        }
+
+        // Remove user from group_members
+        const { error: deleteErr } = await supabase
+            .from('group_members')
+            .delete()
+            .eq('group_id', id)
+            .eq('member_id', userId)
+            .eq('member_type', 'user');
+
+        if (deleteErr) throw deleteErr;
+
+        res.json({ success: true, message: 'Successfully left the group' });
+    } catch (e) {
+        console.error('Error leaving group:', e);
         res.status(500).json({ error: e.message });
     }
 });

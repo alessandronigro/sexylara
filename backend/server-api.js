@@ -34,7 +34,7 @@ const couplePhotoRoutes = require('./routes/couplePhoto');
 const contactsRoutes = require('./routes/contacts');
 
 const app = express();
-const port = process.env.PORT || 4000;
+const PORT = process.env.PORTAPI || 5000;
 
 // Middleware
 app.use(cors());
@@ -339,7 +339,7 @@ app.post('/api/photos/comment', async (req, res) => {
         }
         try {
             logToFile(`[api/photos/comment] outputLen=${(output || '').length} type=${type || 'chat'} npc=${npcId || 'none'}`);
-        } catch (e) {}
+        } catch (e) { }
 
         const sessionId = new Date().toISOString().slice(0, 10);
         const { data: userMessage, error: userError } = await supabase
@@ -527,6 +527,6 @@ app.delete('/api/girlfriend/:id', async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`📦 API server in ascolto su http://localhost:${port}`);
+app.listen(PORT, () => {
+    console.log(`📦 API server in ascolto su http://localhost:${PORT}`);
 });
