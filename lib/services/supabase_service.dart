@@ -76,21 +76,24 @@ class SupabaseService {
     final subscription = client.auth.onAuthStateChange.listen((data) {
       final session = data.session;
       if (session != null && !completer.isCompleted) {
-        completer.complete(supabase.AuthResponse(session: session));
+        completer.complete(
+          supabase.AuthResponse(
+            session: session,
+            user: session.user,
+          ),
+        );
       }
     });
     
     // Return the first auth response or timeout after 30 seconds
-    return completer.future.timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        subscription.cancel();
-        throw StateError('Timeout durante il login con Google');
-      },
-    ).then((response) {
-      subscription.cancel();
-      return response;
-    });
+    try {
+      return await completer.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw StateError('Timeout durante il login con Google'),
+      );
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   Future<supabase.AuthResponse> _signInWithGoogleMobile() async {

@@ -112,11 +112,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     try {
       final resp = await SupabaseService.instance.signInWithGoogle();
-      final user = resp.user;
+      final user = resp.user ?? resp.session?.user ?? SupabaseService.currentUser;
       if (user != null) {
-        final avatar = user.userMetadata?['avatar_url'];
-        final username =
-            user.userMetadata?['full_name'] ?? user.email?.split('@')[0] ?? 'User';
+        final metadata = user.userMetadata ?? {};
+        final avatar = metadata['avatar_url'] ?? metadata['picture'];
+        final username = metadata['full_name'] ??
+            metadata['name'] ??
+            user.email?.split('@')[0] ??
+            'User';
         try {
           await SupabaseService.client.from('user_profile').upsert({
             'id': user.id,
