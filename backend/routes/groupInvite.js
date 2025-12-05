@@ -104,8 +104,9 @@ router.post('/group/invite', async (req, res) => {
     return res.status(400).json({ error: 'Invalid invitedType. Must be "npc", "user", or "ai"' });
   }
 
-  // Normalize 'ai' to 'npc' for consistency
+  // Normalize: accept 'npc' from client but DB enum uses 'ai'
   const normalizedType = invitedType === 'ai' ? 'npc' : invitedType;
+  const dbMemberType = normalizedType === 'npc' ? 'ai' : normalizedType;
 
   try {
     // Check permissions using middleware logic (owner always has permission)
@@ -124,7 +125,7 @@ router.post('/group/invite', async (req, res) => {
       .select('id')
       .eq('group_id', groupId)
       .eq('member_id', invitedId)
-      .eq('member_type', normalizedType)
+      .eq('member_type', dbMemberType)
       .single();
 
     if (existingMember) {
@@ -156,7 +157,7 @@ router.post('/group/invite', async (req, res) => {
         .insert({
           group_id: groupId,
           member_id: invitedId,
-          member_type: 'npc',
+          member_type: dbMemberType, // 'ai' for NPCs in DB enum
           npc_id: invitedId,
           role: 'member'
         });
@@ -402,7 +403,7 @@ router.post('/group/invite/npc', async (req, res) => {
       .select('id')
       .eq('group_id', groupId)
       .eq('member_id', npcId)
-      .eq('member_type', 'npc')
+      .in('member_type', ['ai', 'npc']) // accept legacy rows
       .single();
 
     if (existingMember) {
@@ -415,7 +416,7 @@ router.post('/group/invite/npc', async (req, res) => {
       .insert({
         group_id: groupId,
         member_id: npcId,
-        member_type: 'npc',
+        member_type: 'ai', // enum expects 'ai' for NPCs
         npc_id: npcId,
         role: 'member'
       });
@@ -651,7 +652,7 @@ async function acceptInvite(inviteId, userId = null) {
   const memberData = {
     group_id: invite.group_id,
     member_id: invite.invited_id,
-    member_type: invite.invited_type,
+    member_type: invite.invited_type === 'npc' ? 'ai' : invite.invited_type,
     role: 'member'
   };
 

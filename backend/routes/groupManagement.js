@@ -86,7 +86,7 @@ router.post('/invite/npc', requireGroupPermission('invite_npc'), async (req, res
             await supabase.from('group_members').insert({
                 group_id: groupId,
                 member_id: npcId,
-                member_type: 'npc',
+                member_type: 'ai', // DB enum uses 'ai' for NPCs
                 role: 'member'
             });
             // Notify all group members about new NPC addition

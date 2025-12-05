@@ -36,7 +36,7 @@ router.post('/groups', async (req, res) => {
             ? memberIds.map(id => ({
                 group_id: group.id,
                 member_id: id,
-                member_type: 'npc',
+                member_type: 'ai', // DB enum expects 'ai' for NPCs
                 npc_id: id,
                 role: 'member'
             }))
@@ -58,6 +58,9 @@ router.post('/groups', async (req, res) => {
 // Get all groups belonging to the authenticated user (owned + joined)
 router.get('/groups', async (req, res) => {
     const userId = req.headers['x-user-id'];
+    if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+    }
     try {
         // Get owned groups
         const { data: ownedGroups, error: ownedErr } = await supabase
@@ -109,6 +112,9 @@ router.get('/groups', async (req, res) => {
 router.delete('/groups/:id', async (req, res) => {
     const { id } = req.params;
     const userId = req.headers['x-user-id'];
+    if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+    }
     try {
         // Verify ownership
         const { data: grp, error: fetchErr } = await supabase
@@ -195,6 +201,9 @@ router.post('/groups/:id/members', async (req, res) => {
     const { id } = req.params;
     const { add = [], remove = [] } = req.body; // add/remove: array di { member_id, member_type }
     const userId = req.headers['x-user-id'];
+    if (!userId) {
+        return res.status(401).json({ error: 'User not authenticated' });
+    }
     try {
         // Verify ownership
         const { data: grp, error: ownErr } = await supabase
@@ -207,12 +216,20 @@ router.post('/groups/:id/members', async (req, res) => {
 
         // Add members
         if (Array.isArray(add) && add.length) {
-            const rows = add.map(m => ({
-                group_id: id,
-                member_id: m.member_id || m.id,
-                member_type: (m.member_type || m.type || 'npc').toLowerCase(),
-                npc_id: (m.member_type || m.type || '').toLowerCase() === 'npc' ? (m.member_id || m.id) : null,
-            })).filter(r => r.member_id);
+            const rows = add
+                .map(m => {
+                    const incomingType = (m.member_type || m.type || 'npc').toLowerCase();
+                    const dbType = incomingType === 'npc' ? 'ai' : incomingType; // enum member_type_enum: user | ai
+                    const memberId = m.member_id || m.id;
+                    if (!memberId) return null;
+                    return {
+                        group_id: id,
+                        member_id: memberId,
+                        member_type: dbType,
+                        npc_id: incomingType === 'npc' || incomingType === 'ai' ? memberId : null,
+                    };
+                })
+                .filter(Boolean);
             if (rows.length) {
                 const { error: addErr } = await supabase.from('group_members').insert(rows);
                 if (addErr) throw addErr;
