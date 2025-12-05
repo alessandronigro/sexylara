@@ -3,6 +3,58 @@ const router = express.Router();
 const { supabase } = require('../lib/supabase');
 const wsNotificationService = require('../services/wsNotificationService');
 
+// Build a minimal profile starting from auth metadata
+const buildProfileFromAuthUser = (authUser) => {
+    if (!authUser) return null;
+    const meta = authUser.user_metadata || {};
+    const emailPrefix = authUser.email ? authUser.email.split('@')[0] : null;
+    return {
+        username: meta.full_name || meta.name || meta.username || emailPrefix || 'Utente',
+        name: meta.full_name || meta.name || meta.username || null,
+        avatar_url: meta.avatar_url || meta.picture || null,
+        is_public: false,
+    };
+};
+
+// Fetch profile; if missing, try to auto-create it from auth metadata to avoid PGRST116
+const getOrCreateUserProfile = async (userId) => {
+    const baseSelect = 'id, username, name, avatar_url, is_public';
+    const { data: existing, error } = await supabase
+        .from('user_profile')
+        .select(baseSelect)
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (existing) return existing;
+
+    // Nothing found: attempt bootstrap from auth.users (requires service role key)
+    try {
+        const { data: authRes, error: authErr } = await supabase.auth.admin.getUserById(userId);
+        if (authErr) {
+            console.warn('auth.admin.getUserById failed while bootstrapping profile:', authErr);
+        }
+        const bootstrap =
+            buildProfileFromAuthUser(authRes?.user) ??
+            { username: 'Utente', name: null, avatar_url: null, is_public: false };
+
+        const { data: upserted, error: upsertErr } = await supabase
+            .from('user_profile')
+            .upsert({ id: userId, ...bootstrap })
+            .select(baseSelect)
+            .maybeSingle();
+
+        if (upsertErr) {
+            console.warn('Error auto-creating user_profile:', upsertErr);
+            return { id: userId, ...bootstrap };
+        }
+        return upserted || { id: userId, ...bootstrap };
+    } catch (err) {
+        console.warn('Unhandled error while bootstrapping profile:', err);
+        return null;
+    }
+};
+
 const parseInviteContext = (raw) => {
     if (!raw) return {};
     try {
@@ -30,14 +82,11 @@ router.get('/me', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
     try {
-        const { data, error } = await supabase
-            .from('user_profile')
-            .select('id, username, name, avatar_url, is_public')
-            .eq('id', userId)
-            .single();
-
-        if (error) throw error;
-        res.json({ user: data });
+        const profile = await getOrCreateUserProfile(userId);
+        if (!profile) {
+            return res.status(404).json({ error: 'User profile not found' });
+        }
+        res.json({ user: profile });
     } catch (error) {
         console.error('Error fetching me:', error);
         res.status(500).json({ error: error.message });
@@ -56,15 +105,10 @@ router.get('/:id/profile', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'Missing user id' });
 
     try {
-        const { data: profile, error } = await supabase
-            .from('user_profile')
-            .select('id, username, name, avatar_url, is_public')
-            .eq('id', id)
-            .single();
+        const profile = await getOrCreateUserProfile(id);
+        console.log('📦 Profile data:', profile);
 
-        console.log('📦 Profile data:', profile, 'error:', error);
-
-        if (error || !profile) {
+        if (!profile) {
             return res.status(404).json({ error: 'User not found' });
         }
 
