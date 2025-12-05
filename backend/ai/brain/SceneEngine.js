@@ -26,7 +26,12 @@ function buildSceneContext(context) {
   const topic = extractTopic(context.history || []);
   const tone = detectTone(context.history || []);
   const energy = computeEnergy(context.history || []);
-  return { topic, tone, energy };
+  return {
+    topic,
+    tone,
+    energy,
+    groupMeta: context.groupMeta || null,
+  };
 }
 
 module.exports = { buildSceneContext };

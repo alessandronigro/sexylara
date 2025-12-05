@@ -8,6 +8,29 @@ function buildPrompt(context) {
   const userLanguage = context.userLanguage || lifeCore?.identity?.language || "it";
   const timeContext = context.timeContext || {};
   const worldContext = context.worldContext || {};
+  const sceneContext = context.sceneContext || context.scene || null;
+  const groupMeta =
+    context.groupMeta ||
+    sceneContext?.groupMeta ||
+    context.groupContext?.groupMeta ||
+    null;
+
+  // Sintesi gruppo basata su groupMeta
+  let groupBlock = '';
+  if (groupMeta && typeof groupMeta.memberCount === 'number') {
+    const preview = (groupMeta.membersPreview || [])
+      .slice(0, 3)
+      .map((m) => `- ${m.name || (m.type === 'user' ? 'Utente' : 'NPC')} (${m.type === 'user' ? 'umano' : 'NPC'})`)
+      .join('\n');
+    const ownerLine = groupMeta.ownerName
+      ? `owner: ${groupMeta.ownerName}`
+      : '';
+    const roleLine = groupMeta.currentUserRole
+      ? `tuo ruolo attuale: ${groupMeta.currentUserRole}`
+      : '';
+    const previewLine = preview ? `\nnomi (max 3):\n${preview}` : '';
+    groupBlock = `\n[GRUPPO]\nsei in una chat di gruppo.\npartecipanti totali: ${groupMeta.memberCount} (umani: ${groupMeta.humanCount ?? '?'} | NPC: ${groupMeta.aiCount ?? '?'})${ownerLine ? `\n${ownerLine}` : ''}${roleLine ? `\n${roleLine}` : ''}${previewLine}\nUsa questi numeri se ti chiedono quanti siete o chi c'è; non inventare numeri o dettagli sensibili.`;
+  }
 
   // Se c'è un prompt di sistema personalizzato, usarlo sempre.
   if (promptSystem) {
@@ -70,6 +93,7 @@ coerenza_identita: non contraddire mai origine/nascita (${id.birthplace || id.or
 
 ${identityBlock}
 ${initiativeBlock}
+${groupBlock}
 
 LINGUA: scrivi sempre in ${userLanguage}.
 

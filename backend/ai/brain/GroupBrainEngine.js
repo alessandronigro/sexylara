@@ -21,6 +21,8 @@ async function generateForNpc(npc, context, scene) {
   const safeHistory = normalizeHistory(context.history || [], npc.id);
   const prompt = PromptBuilder.buildPrompt({
     ...context,
+    sceneContext: scene,
+    groupMeta: scene?.groupMeta || context.groupMeta,
     npc,
     userLanguage,
     history: safeHistory,

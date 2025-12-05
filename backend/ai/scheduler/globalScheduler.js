@@ -74,7 +74,9 @@ async function runGroupInitiative(userSocketsMap) {
         .from('group_members')
         .select('member_id, member_type')
         .eq('group_id', g.id);
-      const npcMembers = (members || []).filter((m) => m.member_type === 'npc');
+      const npcMembers = (members || []).filter(
+        (m) => m.member_type === 'npc' || m.member_type === 'ai'
+      );
       const userMembers = (members || []).filter((m) => m.member_type === 'user').map((m) => m.member_id);
       if (!npcMembers.length) continue;
 

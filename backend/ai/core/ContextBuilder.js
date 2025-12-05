@@ -179,12 +179,53 @@ async function build(params) {
   // 6. GROUP CONTEXT (se gruppo)
   // ======================================
   let groupContext = null;
+  let groupMeta = null;
   if (groupId) {
+    const safeMembers = Array.isArray(members) ? members : [];
+
+    const memberCount = safeMembers.length;
+    const humanCount = safeMembers.filter(
+      (m) => m.member_type === 'user' || m.type === 'user'
+    ).length;
+    const aiCount = safeMembers.filter(
+      (m) => m.member_type === 'ai' || m.member_type === 'npc' || m.type === 'npc'
+    ).length;
+
+    const ownerMember = safeMembers.find((m) => m.role === 'owner');
+    const ownerId = ownerMember ? ownerMember.member_id || ownerMember.id : null;
+    const ownerName = ownerMember ? ownerMember.name || null : null;
+
+    const currentUserRole = safeMembers.find(
+      (m) => (m.member_id || m.id) === userId
+    )?.role || null;
+
+    const membersPreview = safeMembers
+      .slice(0, 3)
+      .map((m) => ({
+        id: m.member_id || m.id,
+        type: m.member_type || m.type || 'user',
+        name:
+          m.name ||
+          ((m.member_type === 'user' || m.type === 'user') ? 'Utente' : 'NPC'),
+      }))
+      .filter((m) => m.id);
+
+    groupMeta = {
+      memberCount,
+      humanCount,
+      aiCount,
+      ownerId,
+      ownerName,
+      currentUserRole,
+      membersPreview,
+    };
+
     groupContext = {
       groupId,
       members: members || [],
       npcMembers: npcMembers || [],
-      invokedNpcId
+      invokedNpcId,
+      groupMeta
     };
   }
 
@@ -259,6 +300,7 @@ ${baseSystem}${birthplaceLine}${nationalityLine}
 
     // Contesto addizionale
     groupContext,
+    groupMeta,
     npcMembers: params.npcMembers || [],
     invokedNpcId: params.invokedNpcId || null,
     mediaContext,

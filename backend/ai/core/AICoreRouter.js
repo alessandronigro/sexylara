@@ -122,11 +122,43 @@ async function routeGroupChat(request) {
     }));
   }
 
+  // 2b. Enrich members with names for prompt context
+  const userIds = members
+    .filter(m => m.member_type === 'user')
+    .map(m => m.member_id);
+
+  const { data: userProfiles } = await supabase
+    .from('user_profile')
+    .select('id, username, name')
+    .in('id', userIds.length ? userIds : ['00000000-0000-0000-0000-000000000000']);
+
+  const npcMap = (npcMembers || []).reduce((acc, n) => { acc[n.id] = n; return acc; }, {});
+  const userMap = (userProfiles || []).reduce((acc, u) => { acc[u.id] = u; return acc; }, {});
+
+  const enrichedMembers = (members || []).map((m) => {
+    if (m.member_type === 'npc' || m.member_type === 'ai') {
+      const npc = npcMap[m.npc_id || m.member_id];
+      return {
+        ...m,
+        name: npc?.name || 'NPC',
+        avatar_url: npc?.avatar_url || null,
+        type: 'npc',
+      };
+    }
+    const user = userMap[m.member_id];
+    return {
+      ...m,
+      name: user?.username || user?.name || 'Utente',
+      avatar_url: user?.avatar_url || null,
+      type: 'user',
+    };
+  });
+
   // 3. Build context per gruppo
   const context = await ContextBuilder.build({
     userId,
     groupId,
-    members,
+    members: enrichedMembers,
     npcMembers,
     message,
     history,
