@@ -57,11 +57,8 @@ async function veniceSafeCall(model, input) {
     };
 
     // ============ CHIAMATA STREAMING REPLICATE ============
-    const fallbackModel = process.env.REPLICATE_LLM_MODEL || "meta/meta-llama-3-8b-instruct:5a6809ca6288247d06daf6365557e5e429063f32a21146b2a807c682652136b8";
     const candidates = [];
-    if (fallbackModel) candidates.push(fallbackModel);
-    if (fallbackModel && !fallbackModel.includes(":")) candidates.push(`${fallbackModel}:latest`);
-    candidates.push(model);
+    if (model) candidates.push(model);
     if (model && !model.includes(":")) candidates.push(`${model}:latest`);
 
     let output = "";

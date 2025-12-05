@@ -112,7 +112,7 @@ async function routeGroupChat(request) {
 
     const { data: npcData } = await supabase
       .from('npcs')
-      .select('id, name, gender, personality_type, tone, age, ethnicity, hair_color, eye_color, body_type, avatar_url, face_image_url, group_behavior_profile')
+      .select('id, name, gender, personality_type, tone, age, ethnicity, hair_color, eye_color, body_type, avatar_url, face_image_url, group_behavior_profile, npc_json, prompt_system, preferences')
       .in('id', npcIds.length ? npcIds : ['00000000-0000-0000-0000-000000000000']);
 
     npcMembers = (npcData || []).map(npc => ({

@@ -760,20 +760,20 @@ wss.on('connection', (ws, req) => {
             // Broadcast AI response to all other group members
             console.error('[server-ws] ⚠️ fullMembers:', fullMembers.map(m => ({ id: m.id, type: m.type, name: m.name })));
             console.error('[server-ws] ⚠️ Current userId (sender):', userId);
-            const otherUserMembers = fullMembers
-              .filter(m => m.type === 'user' && m.id !== userId)
+            const allUserMembers = fullMembers
+              .filter(m => m.type === 'user')
               .map(m => m.id);
 
-            console.error('[server-ws] ⚠️ Broadcasting to other members:', otherUserMembers);
+            console.error('[server-ws] ⚠️ Broadcasting to members:', allUserMembers);
             console.error('[server-ws] ⚠️ Currently connected users:', Array.from(userSockets.keys()));
-            for (const memberId of otherUserMembers) {
+            for (const memberId of allUserMembers) {
               const memberWs = userSockets.get(memberId);
               console.error(`[server-ws] ⚠️ Checking member ${memberId}:`, {
                 hasWs: !!memberWs,
                 readyState: memberWs?.readyState,
                 isOpen: memberWs?.readyState === WebSocket.OPEN
               });
-              if (memberWs && memberWs.readyState === WebSocket.OPEN) {
+              if (memberWs && memberWs.readyState === WebSocket.OPEN && memberWs !== ws) {
                 memberWs.send(JSON.stringify({
                   traceId,
                   role: 'assistant',
@@ -786,6 +786,8 @@ wss.on('connection', (ws, req) => {
                   messageId: aiMessage.id
                 }));
                 console.error(`[server-ws] ✅ Broadcast sent to member ${memberId}`);
+              } else if (memberWs === ws) {
+                console.error(`[server-ws] ℹ️ Member ${memberId} already received on current socket`);
               } else {
                 console.error(`[server-ws] ⚠️ Member ${memberId} not connected or socket not open`);
               }

@@ -111,6 +111,18 @@ async function build(params) {
     npcData.npc_json = lifeCore;
   }
 
+  // Map lifeCore into npcMembers if provided
+  const enrichedNpcMembers = Array.isArray(npcMembers)
+    ? npcMembers.map((n) => {
+        const lc = ensureLifeCoreStructure(n.npc_json || n.lifeCore || {});
+        return {
+          ...n,
+          lifeCore: lc,
+          prompt_system: n.prompt_system || n.promptSystem || null,
+        };
+      })
+    : [];
+
   // ======================================
   // 2. USER DATA
   // ======================================
@@ -222,8 +234,13 @@ async function build(params) {
 
     groupContext = {
       groupId,
-      members: members || [],
-      npcMembers: npcMembers || [],
+      members: safeMembers.map((m) => ({
+        id: m.member_id || m.id,
+        name: m.name || 'Partecipante',
+        type: m.member_type || m.type || 'user',
+        role: m.role || null,
+      })),
+      npcMembers: enrichedNpcMembers,
       invokedNpcId,
       groupMeta
     };
@@ -279,6 +296,10 @@ ${baseSystem}${birthplaceLine}${nationalityLine}
     userId,
     npcId,
     groupId,
+    group_size: groupMeta?.memberCount || (members?.length || 0),
+    group_members: groupContext?.members || [],
+    npc_self: npcData,
+    user_self: userData,
 
     // Dati core
     npc: npcData,
@@ -301,7 +322,7 @@ ${baseSystem}${birthplaceLine}${nationalityLine}
     // Contesto addizionale
     groupContext,
     groupMeta,
-    npcMembers: params.npcMembers || [],
+    npcMembers: enrichedNpcMembers.length ? enrichedNpcMembers : (params.npcMembers || []),
     invokedNpcId: params.invokedNpcId || null,
     mediaContext,
     preferences,

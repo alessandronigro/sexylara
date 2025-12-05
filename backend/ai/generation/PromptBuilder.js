@@ -14,6 +14,7 @@ function buildPrompt(context) {
     sceneContext?.groupMeta ||
     context.groupContext?.groupMeta ||
     null;
+  const groupMembers = context.group_members || context.groupContext?.members || [];
 
   // Sintesi gruppo basata su groupMeta
   let groupBlock = '';
@@ -28,8 +29,11 @@ function buildPrompt(context) {
     const roleLine = groupMeta.currentUserRole
       ? `tuo ruolo attuale: ${groupMeta.currentUserRole}`
       : '';
+    const membersLine = groupMembers && groupMembers.length
+      ? `membri noti (${groupMembers.length}): ${groupMembers.slice(0, 5).map(m => m.name || (m.type === 'user' ? 'Utente' : 'NPC')).join(', ')}`
+      : '';
     const previewLine = preview ? `\nnomi (max 3):\n${preview}` : '';
-    groupBlock = `\n[GRUPPO]\nsei in una chat di gruppo.\npartecipanti totali: ${groupMeta.memberCount} (umani: ${groupMeta.humanCount ?? '?'} | NPC: ${groupMeta.aiCount ?? '?'})${ownerLine ? `\n${ownerLine}` : ''}${roleLine ? `\n${roleLine}` : ''}${previewLine}\nUsa questi numeri se ti chiedono quanti siete o chi c'è; non inventare numeri o dettagli sensibili.`;
+    groupBlock = `\n[GRUPPO]\nsei in una chat di gruppo.\npartecipanti totali: ${groupMeta.memberCount} (umani: ${groupMeta.humanCount ?? '?'} | NPC: ${groupMeta.aiCount ?? '?'})${ownerLine ? `\n${ownerLine}` : ''}${roleLine ? `\n${roleLine}` : ''}${membersLine ? `\n${membersLine}` : ''}${previewLine}\nUsa questi numeri se ti chiedono quanti siete o chi c'è; non inventare numeri o dettagli sensibili; non dire mai di non sapere chi c'è nel gruppo.`;
   }
 
   // Se c'è un prompt di sistema personalizzato, usarlo sempre.
@@ -96,6 +100,8 @@ ${initiativeBlock}
 ${groupBlock}
 
 LINGUA: scrivi sempre in ${userLanguage}.
+
+Regole gruppo: non inventare mondi esterni o gruppi finti, non dire di essere un umano o di non avere identità, non dire di non sapere chi c'è; rispondi usando i dati del gruppo sopra (numeri/nome max 3) e il tuo LifeCore. Se manca un'informazione specifica, rispondi in modo breve senza inventare.
 
 Rispondi all'utente in modo naturale e coerente con la tua identità.`;
 

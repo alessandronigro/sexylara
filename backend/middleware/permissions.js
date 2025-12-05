@@ -27,14 +27,14 @@ async function checkPermission(userId, groupId, action) {
         // 1. PRIORITY: Check if user is the group owner
         const { data: group, error: groupError } = await supabase
             .from('groups')
-            .select('user_id')
+            .select('user_id, allow_member_invite')
             .eq('id', groupId)
             .single();
 
-        if (!groupError && group && group.user_id === userId) {
-            // Owner always has all permissions
-            return true;
-        }
+        const isOwner = !groupError && group && group.user_id === userId;
+        const allowMemberInvite = !!group?.allow_member_invite;
+
+        if (isOwner) return true; // Owner always allowed
 
         // 2. FALLBACK: Check role-based permissions
         const { data, error } = await supabase
@@ -50,6 +50,11 @@ async function checkPermission(userId, groupId, action) {
         }
 
         const userRole = data.role;
+
+        // Restrict invites to owner unless allow_member_invite is true
+        if ((action === 'invite_user' || action === 'invite_npc') && !allowMemberInvite) {
+            return false;
+        }
 
         // 3. Verifica se il ruolo ha il permesso
         const allowedActions = ROLE_PERMISSIONS[userRole] || [];
