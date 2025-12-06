@@ -10,7 +10,7 @@ const GroupTurnEngine = require('../brain/GroupTurnEngine');
 const PromptBuilder = require('../generation/PromptBuilder'); // or new GroupPromptBuilder
 const { veniceSafeCall } = require('../generation/VeniceSafeCall');
 const GroupLogContext = require('../../utils/GroupLogContext');
-const { think: thinkGroup } = require('../brain/GroupBrainEngine');
+const { think: thinkGroup } = require('../engines/GroupBrainEngine');
 const { getNpcProfile } = require('../memory/npcRepository');
 const { supabase } = require('../../lib/supabase');
 
@@ -173,12 +173,50 @@ async function routeGroupChat(ctx) {
     options
   });
 
-  // 3. Think Group (GroupBrainEngine)
-  const replies = await thinkGroup(context);
+  // 3. Think Group (GroupBrainEngine) - Call for each NPC
+  const replies = [];
+
+  for (const npc of npcMembers) {
+    const npcContext = {
+      npcId: npc.id,
+      groupId,
+      userMessage: message,
+      userId,
+      history,
+      invokedNpcId
+    };
+
+    console.log(`[AICoreRouter] Calling thinkInGroup for NPC: ${npc.id} (${npc.name})`);
+
+    const reply = await thinkGroup(npcContext);
+
+    console.log(`[AICoreRouter] thinkInGroup returned for ${npc.id}:`, {
+      type: typeof reply,
+      silent: reply?.silent,
+      hasText: !!reply?.text
+    });
+
+    // Only add non-silent replies
+    if (reply && !reply.silent && reply.text) {
+      replies.push({
+        npcId: npc.id,
+        text: reply.text,
+        output: reply.text, // Compatibility
+        mediaRequest: reply.mediaRequest || null
+      });
+    }
+  }
+
+  // 🔍 DIAGNOSTIC LOGGING
+  console.log("[AICoreRouter] All thinkInGroup calls completed:", {
+    totalNpcs: npcMembers.length,
+    repliesCount: replies.length,
+    replies: replies.map(r => ({ npcId: r.npcId, hasText: !!r.text }))
+  });
 
   // 4. Return structured output
   return {
-    responses: replies || [],
+    responses: replies,
     updatedStates: {},
     groupId,
     userId

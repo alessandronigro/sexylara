@@ -51,8 +51,8 @@ async function checkPermission(userId, groupId, action) {
 
         const userRole = data.role;
 
-        // Restrict invites to owner unless allow_member_invite is true
-        if ((action === 'invite_user' || action === 'invite_npc') && !allowMemberInvite) {
+        // Restrict invites for standard members when allow_member_invite is false
+        if ((action === 'invite_user' || action === 'invite_npc') && !allowMemberInvite && userRole !== 'admin') {
             return false;
         }
 

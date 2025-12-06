@@ -86,9 +86,10 @@ router.get('/groups', async (req, res) => {
             isOwner: true
         }));
 
-        // Mark joined groups
+        // Mark joined groups - EXCLUDE owned groups to prevent duplicates
         const joined = (memberRows || [])
             .filter(m => m.groups) // Filter out null groups
+            .filter(m => m.groups.user_id !== userId) // ✅ FIX: Exclude groups owned by this user
             .map(m => ({
                 ...m.groups,
                 isOwner: false

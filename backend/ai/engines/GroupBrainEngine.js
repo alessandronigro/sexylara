@@ -1,8 +1,73 @@
 const { supabase } = require('../../lib/supabase');
 const generateChatReply = require('../../routes/openRouterService');
+const { classifySexualIntentV3 } = require('../intent/intentLLM');
+
 
 const groupContextCache = new Map();
 const CACHE_TTL = 10 * 60 * 1000;
+
+/**
+ * Computes group NPC mode based on semantic sexual intent classification
+ * @param {string} userText - User's message text
+ * @returns {Promise<{explicitMode: boolean, sexualMode: boolean, intentLabel: string}>}
+ */
+async function computeGroupNpcMode(userText) {
+    const intent = await classifySexualIntentV3(userText);
+
+    switch (intent) {
+        case "sessuale_esplicito":
+            return { explicitMode: true, sexualMode: true, intentLabel: intent };
+        case "sessuale_soft":
+            return { explicitMode: true, sexualMode: false, intentLabel: intent };
+        default:
+            return { explicitMode: false, sexualMode: false, intentLabel: intent };
+    }
+}
+
+// ===============================================
+// TURNAZIONE NATURALE NPC DI GRUPPO
+// ===============================================
+
+/**
+ * Mantiene la rotazione tra NPC (Genny → Sara → Genny → …)
+ */
+let lastNpcResponder = null;
+
+/**
+ * Seleziona quale NPC deve rispondere,
+ * garantendo 1 sola risposta a turno
+ */
+function selectNpcTurnation(members, invokedNpcId, userSemanticIntent) {
+    // 1. Se l'utente invoca Genny o Sara → risponde SOLO quello
+    if (invokedNpcId) {
+        return [invokedNpcId];
+    }
+
+    // 2. Se il messaggio è sessuale esplicito → rispondono entrambi
+    if (userSemanticIntent === "sessuale_esplicito") {
+        return members.filter(m => m.type === "npc").map(m => m.id);
+    }
+
+    // 3. Turnazione naturale (solo un NPC parla)
+    const npcIds = members.filter(m => m.type === "npc").map(m => m.id);
+
+    if (!npcIds || npcIds.length === 0) {
+        return [];
+    }
+
+    if (!lastNpcResponder || !npcIds.includes(lastNpcResponder)) {
+        // primo turno o NPC precedente non più presente → prendi il primo NPC
+        lastNpcResponder = npcIds[0];
+        return [npcIds[0]];
+    }
+
+    // Trova prossimo NPC in rotazione
+    const idx = npcIds.indexOf(lastNpcResponder);
+    const nextIdx = (idx + 1) % npcIds.length;
+    lastNpcResponder = npcIds[nextIdx];
+
+    return [npcIds[nextIdx]];
+}
 
 const normalizeBehavior = (profile) => ({
     talkFrequency: Number(profile?.talkFrequency ?? profile?.talk_frequency ?? 0.25) || 0.25,
@@ -144,13 +209,36 @@ function detectNpcInvocation(text, npcName) {
     );
 }
 
+// PATCH: rilevamento NPC invocato con priorità sulla prima occorrenza nel testo
 function detectInvokedNpcId(text, members) {
     if (!text) return null;
-    const t = text.toLowerCase();
-    for (const m of members || []) {
-        if (m.type === 'npc' && m.name && t.includes(m.name.toLowerCase())) return m.id;
+
+    if (typeof text !== "string") {
+        if (text?.snippet) text = text.snippet;
+        else text = String(text);
     }
-    return null;
+    text = text.trim().toLowerCase();
+    if (!text) return null;
+
+    let matches = [];
+
+    for (const m of members || []) {
+        if (m.type !== 'npc') continue;
+        const name = m.name?.toLowerCase();
+        if (!name) continue;
+
+        const index = text.indexOf(name);
+        if (index !== -1) {
+            matches.push({ npcId: m.id, index });
+        }
+    }
+
+    // nessun match → nessuna invocazione
+    if (matches.length === 0) return null;
+
+    // se più NPC nominati → prende quello nominato per primo
+    matches.sort((a, b) => a.index - b.index);
+    return matches[0].npcId;
 }
 
 function buildGroupPrompt(ai, userProfile, groupData, userMessage) {
@@ -202,6 +290,12 @@ ${recentMsgs}
 
 async function thinkInGroup(context) {
     const { npcId, groupId, userMessage, userId, history, invokedNpcId } = context;
+
+    console.log("[DEBUG][thinkInGroup] START", {
+        npcId: context.npcId,
+        userMessage: context.userMessage,
+        invokedNpcId: context.invokedNpcId
+    });
 
     const groupContext = await loadGroupContext(groupId);
     if (!groupContext) return { silent: true };
@@ -263,8 +357,10 @@ async function thinkInGroup(context) {
         shouldSpeak,
         invokedNpcId
     };
+    console.log("[DEBUG][thinkInGroup] Decision Meta:", decisionMeta);
 
-    if (!shouldSpeak) return { silent: true, decision: decisionMeta };
+    // FORCE NPC RESPONSE - Never suppress based on probability
+    // if (!shouldSpeak) return { silent: true, decision: decisionMeta };
 
     const normalizedHistory = (history || []).map(h => ({
         sender_id: h.sender_id,
@@ -287,6 +383,29 @@ async function thinkInGroup(context) {
         userMessage
     );
 
+    // ============================================================
+    // SEMANTIC INTENT CLASSIFICATION V3
+    // ============================================================
+    const mode = await computeGroupNpcMode(userMessage);
+    console.log('[GroupBrainEngine] Semantic intent:', mode.intentLabel, '— Routing model:', mode);
+    console.log("[DEBUG][thinkInGroup] Intent Mode:", mode);
+
+    // ============================================================
+    // TURNAZIONE NPC - Verifica se questo NPC deve rispondere
+    // ============================================================
+    const npcIdsToRespond = selectNpcTurnation(
+        groupContext.members,
+        invokedNpcId,
+        mode.intentLabel
+    );
+
+    if (!npcIdsToRespond.includes(npcId)) {
+        console.log(`[GroupBrainEngine] NPC ${npcId} skipped by turnation (selected: ${npcIdsToRespond.join(', ')})`);
+        return { silent: true, reason: "turnazione_skip" };
+    }
+
+    console.log(`[GroupBrainEngine] NPC ${npcId} selected to respond (turnation)`);
+
     try {
         const formattedHistory = normalizedHistory.map(h => ({
             role: h.sender_id === npcId ? 'assistant' : 'user',
@@ -294,6 +413,7 @@ async function thinkInGroup(context) {
         }));
 
         // Usa overrideSystemPrompt + history corretti: il messaggio utente resta separato
+        console.log("[DEBUG][ModelCall] Calling LLM for npc:", npcId);
         const reply = await generateChatReply(
             `${userProfile.name}: ${userMessage}`,
             'sensuale',
@@ -302,6 +422,7 @@ async function thinkInGroup(context) {
             systemPrompt,
             formattedHistory
         );
+        console.log("[DEBUG][ModelCall] LLM reply raw:", reply);
 
         if (isFirstIntro) {
             await supabase
@@ -314,6 +435,12 @@ async function thinkInGroup(context) {
         // Estrai la stringa dall'oggetto reply (generateChatReply ritorna { type, output, stateUpdates })
         const replyText = typeof reply === 'string' ? reply : (reply?.output || reply?.text || '');
 
+        console.log("[DEBUG][thinkInGroup] Final result:", {
+            npcId,
+            silent: false,
+            text: replyText
+        });
+
         return {
             silent: false,
             text: replyText,
@@ -321,7 +448,7 @@ async function thinkInGroup(context) {
             decision: decisionMeta
         };
     } catch (err) {
-        console.error('GroupEngine error:', err);
+        console.error('[ERROR][thinkInGroup] LLM error:', err);
         return { silent: true, decision: decisionMeta };
     }
 }
@@ -330,7 +457,11 @@ module.exports = {
     loadGroupContext,
     registerNpcInGroup,
     thinkInGroup,
+    think: thinkInGroup, // Alias for compatibility
     detectNpcInvocation,
     detectInvokedNpcId,
-    buildGroupPrompt
+    buildGroupPrompt,
+    computeGroupNpcMode
 };
+
+

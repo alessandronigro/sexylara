@@ -1,7 +1,7 @@
 // ResponseOrchestrator (ThrillMe AI Core v2 - scaffolding).
 // Coordinates the current legacy engines; deeper layering will be added later.
 const { brainEngine } = require('../brainEngine');
-const { think: thinkGroup } = require('../brain/GroupBrainEngine');
+const { think: thinkGroup } = require('../engines/GroupBrainEngine');
 
 async function orchestrate(ctx = {}) {
   const {

@@ -36,6 +36,20 @@ async function veniceSafeCall(model, input) {
 
     console.log(`VeniceSafeCall: calling model=${modelToUse} at ${baseURL}`);
 
+    console.log('[TRACE][PIPELINE]', JSON.stringify({
+      stage: 'VeniceSafeCall',
+      model: modelToUse,
+      params: {
+        temp: input.temperature,
+        top_p: input.top_p, // if present
+        max_tokens: input.max_tokens,
+      },
+      veniceParams,
+      promptSnippet: Array.isArray(input.messages)
+        ? JSON.stringify(input.messages).substring(0, 300) + '... (truncated)'
+        : 'Invalid messages format'
+    }, null, 2));
+
     const completion = await client.chat.completions.create({
       model: modelToUse,
       messages: input.messages,

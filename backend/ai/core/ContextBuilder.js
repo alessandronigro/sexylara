@@ -114,13 +114,13 @@ async function build(params) {
   // Map lifeCore into npcMembers if provided
   const enrichedNpcMembers = Array.isArray(npcMembers)
     ? npcMembers.map((n) => {
-        const lc = ensureLifeCoreStructure(n.npc_json || n.lifeCore || {});
-        return {
-          ...n,
-          lifeCore: lc,
-          prompt_system: n.prompt_system || n.promptSystem || null,
-        };
-      })
+      const lc = ensureLifeCoreStructure(n.npc_json || n.lifeCore || {});
+      return {
+        ...n,
+        lifeCore: lc,
+        prompt_system: n.prompt_system || n.promptSystem || null,
+      };
+    })
     : [];
 
   // ======================================
@@ -135,6 +135,14 @@ async function build(params) {
       .maybeSingle();
     userData = userRow;
   }
+
+  const userName =
+    userData?.display_name ||
+    userData?.name ||
+    userData?.username ||
+    userData?.nickname ||
+    userData?.email ||
+    'utente';
 
   // Detect language
   const detectedLang = detectLanguage(message);
@@ -215,7 +223,7 @@ async function build(params) {
       .slice(0, 3)
       .map((m) => ({
         id: m.member_id || m.id,
-        type: m.member_type || m.type || 'user',
+        type: (m.member_type === 'ai' ? 'npc' : m.member_type) || (m.type === 'ai' ? 'npc' : m.type) || 'user',
         name:
           m.name ||
           ((m.member_type === 'user' || m.type === 'user') ? 'Utente' : 'NPC'),
@@ -234,12 +242,16 @@ async function build(params) {
 
     groupContext = {
       groupId,
-      members: safeMembers.map((m) => ({
-        id: m.member_id || m.id,
-        name: m.name || 'Partecipante',
-        type: m.member_type || m.type || 'user',
-        role: m.role || null,
-      })),
+      members: safeMembers.map((m) => {
+        const rawType = m.member_type || m.type || 'user';
+        const normalizedType = rawType === 'ai' ? 'npc' : rawType;
+        return {
+          id: m.member_id || m.id,
+          name: m.name || 'Partecipante',
+          type: normalizedType,
+          role: m.role || null,
+        };
+      }),
       npcMembers: enrichedNpcMembers,
       invokedNpcId,
       groupMeta
@@ -291,15 +303,24 @@ ${baseSystem}${birthplaceLine}${nationalityLine}
   // ======================================
   // RETURN CONTEXT COMPLETO
   // ======================================
-  return {
+
+  const ctxResult = {
     // Identificatori
     userId,
     npcId,
     groupId,
+    isGroup: !!groupId,
+    groupMembers: groupContext?.members || [],
+    behavior: {
+      maxLength: "short",
+      style: "realistic",
+      emojiAllowed: true,
+    },
     group_size: groupMeta?.memberCount || (members?.length || 0),
     group_members: groupContext?.members || [],
     npc_self: npcData,
     user_self: userData,
+    userName,
 
     // Dati core
     npc: npcData,
@@ -340,6 +361,20 @@ ${baseSystem}${birthplaceLine}${nationalityLine}
     // Options originali (per compatibility)
     options
   };
+
+  const sysPrompt = promptSystem || '';
+  console.log('[TRACE][PIPELINE]', JSON.stringify({
+    stage: 'ContextBuilder',
+    isGroup: !!groupId,
+    systemPromptLength: sysPrompt.length,
+    historyCount: conversationHistory.length,
+    lastHistoryPreview: conversationHistory.slice(0, 2).map(m => ({ role: m.role || m.sender_type, snippet: (m.content || '').substring(0, 120) })),
+    systemPromptStart: sysPrompt.substring(0, 300),
+    systemPromptEnd: sysPrompt.slice(-300),
+    hasSafetyBlocks: sysPrompt.includes('blocco') || sysPrompt.includes('family') || sysPrompt.includes('esplicito'),
+  }, null, 2));
+
+  return ctxResult;
 }
 
 module.exports = {

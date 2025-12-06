@@ -4,6 +4,9 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const path = require("path");
+
+process.env.LOG_FILE_PATH = process.env.LOG_FILE_PATH || path.join(__dirname, "logs-api.txt");
+
 const { supabase } = require('./lib/supabase');
 const logToFile = require("./utils/log");
 const { getUserPreferences } = require("./lib/userMemory");

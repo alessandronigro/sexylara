@@ -163,13 +163,17 @@ IMPORTANT STYLE RULES:
     isEmpty = !llmResponse || /^\s*$/.test(llmResponse) || (typeof llmResponse === 'string' && llmResponse.includes('[EMPTY_RESPONSE]'));
     const content = isEmpty ? fallbackText : llmResponse;
 
+
     const modeMatch = content.match(/\[MODE:(image|video|audio|chat)\]/i);
     const mode = modeMatch ? modeMatch[1].toLowerCase() : "chat";
     let cleanedContent = content.replace(/\[MODE:(image|video|audio|chat)\]/i, '').trim();
-    // Accorcia se troppo verboso (es. commenti foto)
-    if (cleanedContent.length > 220) {
-      cleanedContent = cleanedContent.slice(0, 220).trim();
-    }
+
+    // Basic cleanup - NO LENGTH CUT
+    cleanedContent = cleanedContent
+      .replace(/【.*?】/g, "")   // remove weird tokens
+      .replace(/\s+/g, " ")     // normalize whitespace
+      .trim();
+
     if (!cleanedContent) cleanedContent = fallbackText;
     logToFile(`[openRouterService] cleanedContent len=${(cleanedContent || '').length} mode=${mode}`);
 

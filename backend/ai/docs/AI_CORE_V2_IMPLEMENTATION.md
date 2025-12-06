@@ -269,7 +269,7 @@ const result = await AICoreRouter.routeChat({
 
 ### Prima:
 ```javascript
-const { think: thinkGroup } = require('../ai/brain/GroupBrainEngine');
+const { think: thinkGroup } = require('../ai/engines/GroupBrainEngine');
 
 const result = await thinkGroup({ groupId, userId, message, ... });
 ```

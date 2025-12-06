@@ -38,12 +38,184 @@ const wsLog = (...args) => {
   if (WS_VERBOSE) console.log(...args);
 };
 
-const { classifyIntent } = require('./ai/intent/intentLLM');
+const { classifyIntent, classifySexualIntentV3 } = require('./ai/intent/intentLLM');
 const pendingCouplePhoto = new Map();
 
 function resolveNpcAvatar(npc) {
   if (!npc) return null;
   return npc.avatar_url || npc.avatar || npc.image_reference || npc.face_image_url || null;
+}
+
+// ======================================================
+//  PATCH D — Logging Avanzato + Validator + Diversificazione NPC
+// ======================================================
+
+// ------------------------------------------------------
+// A) ADVANCED LOGGING: log strutturati e sicuri
+// ------------------------------------------------------
+function logGroupResponseDebug(label, payload) {
+  try {
+    console.log(`[GroupDebug] ${label}:`, JSON.stringify(payload, null, 2));
+  } catch {
+    console.log(`[GroupDebug] ${label}: <unstringifiable payload>`);
+  }
+}
+
+// ------------------------------------------------------
+// B) VALIDATORE ROBUSTO PER LE RISPOSTE NPC
+// ------------------------------------------------------
+function validateGroupReply(raw) {
+  if (!raw) return null;
+
+  // Supporto risposte stringa pure
+  if (typeof raw === "string") {
+    return {
+      npcId: null,
+      text: raw,
+      valid: true,
+      reason: "string_reply"
+    };
+  }
+
+  // Supporto risposta oggetto
+  if (typeof raw === "object") {
+    const text =
+      raw.text ||
+      raw.output ||
+      raw.response ||
+      raw.message ||
+      "";
+
+    if (!text || typeof text !== "string") {
+      return {
+        npcId: raw.npcId || null,
+        text: "",
+        valid: false,
+        reason: "missing_text"
+      };
+    }
+
+    return {
+      npcId: raw.npcId || raw.aiId || null,
+      text,
+      valid: true,
+      reason: "object_reply"
+    };
+  }
+
+  // Tutto il resto → invalido ma non crasha
+  return {
+    npcId: null,
+    text: "",
+    valid: false,
+    reason: "invalid_format"
+  };
+}
+
+// ------------------------------------------------------
+// C) DIVERSIFICAZIONE RISPOSTE NPC
+//    (ogni risposta riceve una firma semantica unica)
+// ------------------------------------------------------
+function diversifyNpcOutput(text, npcName) {
+  if (!text || typeof text !== "string") return text;
+
+  const suffixes = [
+    "… credo.",
+    "se devo essere sincero/a.",
+    "almeno per me.",
+    "direi così.",
+    "più o meno.",
+    "se ci penso bene.",
+    "in un certo senso.",
+    "te lo dico come la penso."
+  ];
+
+  const signature = suffixes[Math.floor(Math.random() * suffixes.length)];
+
+  // Evita che ogni messaggio abbia sempre il suffisso: 60% varianza
+  if (Math.random() < 0.6) {
+    return text;
+  }
+
+  return `${text} ${signature}`;
+}
+
+// ------------------------------------------------------
+//  OVERRIDE DELLA NORMALIZZAZIONE RISPOSTE
+// ------------------------------------------------------
+function normalizeGroupReplies(result) {
+  let replies = [];
+
+  if (Array.isArray(result?.responses)) replies = result.responses;
+  else if (Array.isArray(result?.replies)) replies = result.replies;
+  else if (Array.isArray(result)) replies = result;
+  else if (result && typeof result === "object") replies = [result];
+  else replies = [];
+
+  // Validazione + diversificazione
+  const cleaned = replies
+    .map((r) => {
+      const v = validateGroupReply(r);
+      if (!v || !v.valid) return null;
+
+      return {
+        npcId: v.npcId,
+        text: diversifyNpcOutput(v.text, v.npcId)
+      };
+    })
+    .filter(Boolean);
+
+  logGroupResponseDebug("NormalizedReplies", cleaned);
+
+  return {
+    count: cleaned.length,
+    replies: cleaned
+  };
+}
+
+// ===============================================
+// PATCH — TURNAZIONE NATURALE NPC DI GRUPPO
+// ===============================================
+
+/**
+ * Mantiene la rotazione tra NPC (Genny → Sara → Genny → …)
+ */
+let lastNpcResponder = null;
+
+/**
+ * Seleziona quale NPC deve rispondere,
+ * garantendo 1 sola risposta a turno
+ */
+function selectNpcTurnation(members, invokedNpcId, userSemanticIntent) {
+  // 1. Se l'utente invoca Genny o Sara → risponde SOLO quello
+  if (invokedNpcId) {
+    return [invokedNpcId];
+  }
+
+  // 2. Se il messaggio è sessuale esplicito → rispondono entrambi
+  if (userSemanticIntent === "sessuale_esplicito") {
+    return members.filter(m => m.type === "npc").map(m => m.id);
+  }
+
+  // 3. Turnazione naturale (solo un NPC parla)
+  const npcIds = members.filter(m => m.type === "npc").map(m => m.id);
+
+  if (!npcIds || npcIds.length === 0) {
+    return [];
+  }
+
+  if (!lastNpcResponder || !npcIds.includes(lastNpcResponder)) {
+    // primo turno o NPC precedente non più presente → prendi il primo NPC
+    lastNpcResponder = npcIds[0];
+    return [npcIds[0]];
+  }
+
+  // Trova prossimo NPC in rotazione
+  const idx = npcIds.indexOf(lastNpcResponder);
+  const nextIdx = (idx + 1) % npcIds.length;
+  lastNpcResponder = npcIds[nextIdx];
+
+  return [npcIds[nextIdx]];
 }
 
 async function ensureNpcImageForMedia(npc) {
@@ -711,30 +883,47 @@ wss.on('connection', (ws, req) => {
           // Notify typing for all NPCs
           npcMembers.forEach(n => sendNpcStatus(ws, n.id, 'typing', traceId));
 
+          // 🔥 CLASSIFICA INTENT SEMANTICO PER TURNAZIONE
+          const userSemanticIntent = await classifySexualIntentV3(text);
+          console.log(`[NPC Turnation] Semantic intent: ${userSemanticIntent}`);
+
+          // 🎯 SELEZIONA QUALI NPC DEVONO RISPONDERE (TURNAZIONE)
+          const selectedNpcIds = selectNpcTurnation(fullMembers, invokedNpcId, userSemanticIntent);
+          console.log(`[NPC Turnation] Selected NPCs:`, selectedNpcIds);
+
+          // Filtra npcMembers per includere solo gli NPC selezionati
+          const filteredNpcMembers = npcMembers.filter(n => selectedNpcIds.includes(n.id));
+
+          // Notify typing only for selected NPCs
+          filteredNpcMembers.forEach(n => sendNpcStatus(ws, n.id, 'typing', traceId));
+
           const result = await AICoreRouter.routeGroupChat({
             groupId: group_id,
             userId,
             message: text,
             history: historyForAi,
-            npcMembers,
+            npcMembers: filteredNpcMembers, // ✅ Solo NPC selezionati
             invokedNpcId,
             options: { rawMessage: text }
           });
 
+          // 🔥 APPLICA NORMALIZZAZIONE AVANZATA CON VALIDAZIONE E DIVERSIFICAZIONE
+          const normalized = normalizeGroupReplies(result);
+          const { count, replies: safeReplies } = normalized;
 
-          const replies = result?.responses || [];
-          console.log('[server-ws] Group chat replies received:', { count: replies.length, replies: replies.map(r => ({ npcId: r?.npcId, hasOutput: !!(r?.output || r?.text) })) });
+          console.log('[server-ws] Group chat replies received:', {
+            count,
+            replies: safeReplies.map(r => ({ npcId: r?.npcId, hasText: !!r?.text }))
+          });
           const npcLookup = npcMembers.reduce((acc, n) => { acc[n.id] = n; return acc; }, {});
-          console.error('[server-ws] ⚠️ ABOUT TO PROCESS REPLIES - npcLookup keys:', Object.keys(npcLookup), 'replies count:', replies.length);
+          console.log('[server-ws] Processing replies - npcLookup keys:', Object.keys(npcLookup), 'replies count:', safeReplies.length);
 
 
-          for (const resp of replies) {
-            console.error('[server-ws] ⚠️ LOOP ITERATION - Processing reply:', { hasResp: !!resp, npcId: resp?.npcId });
-            console.log('[server-ws] Processing reply:', { hasResp: !!resp, npcId: resp?.npcId });
+          for (const resp of safeReplies) {
+            console.log('[server-ws] Processing reply:', { npcId: resp?.npcId, hasText: !!resp?.text });
 
-            if (!resp) continue;
-            const output = resp.output || resp.text;
-            if (!output) continue;
+            if (!resp || !resp.text) continue;
+            const output = resp.text; // Already validated and diversified by normalizeGroupReplies
 
             const ai = npcLookup[resp.npcId] || { id: resp.npcId, name: 'NPC' };
 
@@ -804,54 +993,12 @@ wss.on('connection', (ws, req) => {
           console.error('❌ Errore generale chat di gruppo (689):', groupError);
         }
 
-        // Fallback: se nessun NPC ha risposto, forza un messaggio breve da un NPC casuale
+        // FALLBACK DISABLED - La turnazione può validamente risultare in 0 risposte
+        // Se nessun NPC risponde, è perché la turnazione ha deciso così (es. skip per rotazione)
+        // Il fallback causava risposte indesiderate che sovrascrivevano le decisioni della turnazione
         if (responseCount === 0 && aiMembers.length > 0) {
-          console.warn('⚠️ Nessuna risposta AI, attivo fallback', {
-            invokedNpcId,
-            classifierMediaType,
-            text,
-          });
-          const fallbackMember = aiMembers[Math.floor(Math.random() * aiMembers.length)];
-          const fallbackAi = fallbackMember.npcs;
-          const fallbackPhrases = [
-            'Eccomi, sono qui!',
-            'Sono qui, dimmi pure.',
-            'Presente, raccontami.',
-            'Ci sono, vai avanti.',
-            'Ti ascolto, dimmi tutto.'
-          ];
-          const fallbackText = fallbackAi?.name
-            ? `${fallbackAi.name}: ${fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)]}`
-            : fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
-          try {
-            const { data: savedMsg } = await supabase
-              .from('group_messages')
-              .insert({
-                group_id,
-                sender_id: fallbackAi?.id || aiMembers[0].id,
-                content: fallbackText,
-                type: 'text'
-              })
-              .select('id')
-              .single();
-
-            ws.send(JSON.stringify({
-              traceId,
-              role: 'assistant',
-              type: 'group_message',
-              content: fallbackText,
-              sender_id: fallbackAi?.id,
-              sender_name: fallbackAi?.name || 'NPC',
-              avatar: resolveAvatar(fallbackAi),
-              group_id,
-              messageId: savedMsg?.id
-            }));
-            responseCount = 1;
-            console.log('✅ Fallback group reply sent.');
-          } catch (fbError) {
-            console.error('❌ Errore fallback group reply:', fbError);
-          }
-          sendNpcStatus(ws, fallbackAi?.id || aiMembers[0].id, '', traceId);
+          console.log('ℹ️ No NPC responded - this is valid with turnation system');
+          // Non inviare fallback - la turnazione ha deciso correttamente
         }
 
         // Invia segnale di fine conversazione
@@ -1234,9 +1381,14 @@ wss.on('connection', (ws, req) => {
         // =======================================================
         // 🧠 CLASSIFICAZIONE INTENTO DELL'NPC (output del modello)
         // =======================================================
+        // DISABLED: Non classificare l'output dell'NPC per evitare npc_send_none
         // Classifica l'intent solo se l'utente NON ha già richiesto esplicitamente media
+        // if (!classifierMediaType) {
+        //   npcIntent = await classifyIntent(output || '', 'npc');
+        // }
+        // FORCE: NPC sempre invia risposta, mai soppresso
         if (!classifierMediaType) {
-          npcIntent = await classifyIntent(output || '', 'npc');
+          npcIntent = 'npc_send'; // Always send, never suppress
         }
         console.log('🧭 Detected intent npc:', npcIntent);
 

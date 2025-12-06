@@ -18,6 +18,15 @@ function computeMood(relationship, emotionVector, prevMood = null) {
   else if (valence > 0.6) target = 'warm';
   else if (valence < 0.4) target = 'hurt';
   const mood = clampMood(prevMood, target);
+
+  console.log('[TRACE][PIPELINE]', JSON.stringify({
+    stage: 'MoodEngine',
+    prevMood,
+    target,
+    finalMood: mood,
+    valence
+  }, null, 2));
+
   return mood;
 }
 

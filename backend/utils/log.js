@@ -4,7 +4,14 @@ const fs = require("fs");
 const path = require("path");
 const util = require("util");
 
-const LOG_PATH = path.join(__dirname, "../logs.txt");
+const DEFAULT_LOG_PATH = path.join(__dirname, "../logs.txt");
+const LOG_PATH = (() => {
+  const customPath = process.env.LOG_FILE_PATH || process.env.LOG_PATH;
+  if (!customPath) return DEFAULT_LOG_PATH;
+  return path.isAbsolute(customPath)
+    ? customPath
+    : path.resolve(__dirname, "..", customPath);
+})();
 const CONSOLE_FILTER = (process.env.CONSOLE_LOG_FILTER || "chat").toLowerCase();
 const originalConsole = {
   log: console.log.bind(console),

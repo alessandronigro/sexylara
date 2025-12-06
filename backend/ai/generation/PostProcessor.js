@@ -123,6 +123,61 @@ function finishIfCutOff(text) {
   return `${text}...`;
 }
 
+function removeModelOpeners(text) {
+  if (!text) return text;
+  return text
+    .replace(/^Beh[, ]+/i, "")
+    .replace(/^Allora[, ]+/i, "")
+    .replace(/^Direi che[, ]+/i, "")
+    .replace(/^Penso che[, ]+/i, "")
+    .trim();
+}
+
+function shortenNatural(text) {
+  // NO LENGTH CUT - return full text
+  return text;
+}
+
+function removeNovelPatterns(text) {
+  if (!text) return text;
+  return text
+    .replace(/l[ae] (luce|stanza|aria|atmosfera|penombra)[^.,]+[,\.]?/gi, "")
+    .replace(/(mi sembrava|come se)[^.,]+[,\.]?/gi, "")
+    .replace(/(danzare|sussurrare|avvolgere)[^.,]+/gi, "")
+    .trim();
+}
+
+function stripRomanticFluff(text) {
+  if (!text) return text;
+  return text
+    .replace(/(luce|tramonto|soffusa|sussurro|atmosfera)[^.,]+/gi, "")
+    .replace(/(come se|mi sembra|mi avvolge)[^.,]+/gi, "")
+    .trim();
+}
+
+function limitSentences(text, max = 2) {
+  if (!text) return text;
+  const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (parts.length <= max) return text;
+  return parts.slice(0, max).join(" ").trim();
+}
+
+function microVariation(text, seed) {
+  if (!seed) return text;
+  const variants = {
+    shy: ["Mh…", "Non saprei…", "Sai…"],
+    friendly: ["Guarda…", "Ti dico la verità…", "Onestamente…"],
+    chaotic: ["Okay, senti…", "Aspetta, aspetta…", "Ti dico una cosa…"],
+    sensual: ["Mmm…", "Ti confesso una cosa…", "Sai cosa mi capita?…"]
+  };
+  const prefixList = variants[seed];
+  if (!prefixList) return text;
+  const addPrefix = Math.random() < 0.25;
+  if (!addPrefix) return text;
+  const prefix = prefixList[Math.floor(Math.random() * prefixList.length)];
+  return `${prefix} ${text}`;
+}
+
 function process(output, context) {
   const intentFlags = context.intentFlags || {};
   let toneMode = resolveToneMode(context.toneMode || 'soft');
@@ -155,10 +210,138 @@ function process(output, context) {
   cleaned = rewriteIfRepetitive(cleaned, toneMode, context.lastOpenings, intentFlags);
 
   // 4. Finish cutoff
-  const finalized = finishIfCutOff(cleaned);
+  let finalized = finishIfCutOff(cleaned);
+
+  // 5. Brevity filter: se l'utente non ha chiesto dettagli, accorcia a max 2-3 frasi
+  const userAskedDetails = /descrivi|racconta meglio|fammi immaginare|più dettagli|dimmi di più/i.test(
+    context?.userMessage || context?.message || ''
+  );
+  if (!userAskedDetails) {
+    const sentences = finalized
+      .split(/(?<=[\.!\?])\s+/)
+      .filter((s) => s && s.trim().length > 0);
+    if (sentences.length > 3) {
+      finalized = sentences.slice(0, 3).join(' ').trim();
+    }
+  }
+
+  // 6. Ulteriore filtro anti-narrativo e di lunghezza
+  finalized = removeModelOpeners(finalized);
+  finalized = removeNovelPatterns(finalized);
+  finalized = stripRomanticFluff(finalized);
+  finalized = limitSentences(finalized, 3);
+  finalized = shortenNatural(finalized);
+  finalized = microVariation(finalized, context?.persona?.seed);
+
+  // 6.1 Rimuovi riferimenti a partner/fidanzati inventati
+  if (finalized && (finalized.toLowerCase().includes('partner') || finalized.toLowerCase().includes('fidanzat'))) {
+    finalized = finalized.replace(/.*partner.*?/gi, '').replace(/.*fidanzat.*?/gi, '').trim();
+  }
+
+  // 7. Anti-intimità in gruppo
+  if (context.isGroup) {
+    finalized = finalized
+      .replace(/\b(tesoro|amore|caro|cara|piccolo|piccola)\b/gi, '')
+      .replace(/ti sento vicino/gi, '')
+      .replace(/mi fai sentire/gi, '')
+      .trim();
+  }
+
+  /* ============================================================
+     PATCH: Anti-Mono NPC + Anti-Replica + Human Variation
+     ============================================================ */
+  // DISABLED: Override for empty responses
+  // 1️⃣ Non permettere risposte vuote / ripetizioni note
+  // if (!finalized || finalized.length < 2) {
+  //   finalized = "Mh… ero distratta un attimo.";
+  // }
+
+  // DISABLED: Override for toxic responses
+  // 2️⃣ Bannare risposta tossica "Non riesco a rispondere adesso"
+  // if (/non riesco a rispondere adesso/i.test(finalized)) {
+  //   const natural = [
+  //     "Aspetta un attimo… ci sono.",
+  //     "Mh… sì, dimmi pure.",
+  //     "Stavo pensando ad altro un secondo.",
+  //     "Eccomi, dimmi che c'è."
+  //   ];
+  //   finalized = natural[Math.floor(Math.random() * natural.length)];
+  // }
+
+  // DISABLED: Override for duplicate responses
+  // 3️⃣ Anti-NPC Cloning → se due NPC generano la stessa risposta
+  // if (context?.groupLastNpcOutput) {
+  //   const last = context.groupLastNpcOutput.trim().toLowerCase();
+  //   const now = finalized.trim().toLowerCase();
+  //   if (last === now) {
+  //     const variations = [
+  //       "Mh… la vedo diversamente.",
+  //       "Per me invece è un po' diverso.",
+  //       "Io la penso in un altro modo.",
+  //       "Mh… direi un'altra cosa."
+  //     ];
+  //     finalized = variations[Math.floor(Math.random() * variations.length)];
+  //   }
+  // }
+
+  // 4️⃣ Humanizer forte basato su seed NPC
+  if (context?.persona?.seed) {
+    const seed = context.persona.seed;
+    const humanVariants = {
+      shy: ["Mh…", "Sai…", "Non so se dirlo ma…"],
+      friendly: ["Guarda…", "Ti dico una cosa,", "Onestamente…"],
+      chaotic: ["Aspetta aspetta…", "Okay senti…", "Oh, allora…"],
+      sensual: ["Mmm…", "Ti confesso una cosa…", "Sai cosa?…"],
+    };
+
+    const list = humanVariants[seed];
+    if (list) {
+      const prefix = list[Math.floor(Math.random() * list.length)];
+      if (!finalized.startsWith(prefix)) {
+        finalized = `${prefix} ${finalized}`.trim();
+      }
+    }
+  }
+
+  // 5️⃣ Risposta finale naturale e NON robotica - NO LENGTH CUT
+  // Removed truncation to allow full responses
+
+  /* ============================================================
+     PATCH B — Anti-skip: se il modello evita la domanda → riscrivi
+     ============================================================ */
+  const userText = context?.message?.toLowerCase() || "";
+  const answer = finalized.toLowerCase();
+
+  const evasivePatterns = [
+    "sto pensando",
+    "dimmi pure",
+    "eccomi",
+    "non saprei",
+    "non so",
+    "non riesco",
+    "un attimo",
+    "ci sono",
+    "mh",
+    "mmm"
+  ];
+
+  const importantWords = userText.split(/\W+/).filter(w => w.length > 3);
+  let matchesTopic = importantWords.some(w => answer.includes(w));
+
+  // DISABLED: PostProcessor override that replaced valid responses with generic phrases
+  // Se NON risponde al topic → rigenerazione sintetica
+  // if (!matchesTopic) {
+  //   const spicyHints = [
+  //     "Dipende dai momenti…",
+  //     "Per me è più una questione di sensazioni.",
+  //     "Non è qualcosa che misuro così, sinceramente.",
+  //     "Mh… diciamo che certe cose mi incuriosiscono.",
+  //   ];
+  //   finalized = spicyHints[Math.floor(Math.random() * spicyHints.length)];
+  // }
 
   const actions = [];
-  if (context.motivation.motivation === 'sedurre') {
+  if (context.motivation?.motivation === 'sedurre') {
     actions.push('SUGGEST_MEDIA');
   }
   if (context.perception?.textAnalysis?.sentiment === 'negative') {
@@ -182,11 +365,22 @@ function process(output, context) {
     actions.push('ASK_USER_FOR_PHOTO');
   }
 
+  console.log('[TRACE][PIPELINE]', JSON.stringify({
+    stage: 'PostProcessor',
+    finalText: (finalized || '').substring(0, 500),
+    actions: actions
+  }, null, 2));
+
+  // NOTE: addressing now handled implicitly by model; no automatic prefixes
+
   return {
     text: finalized,
-    originalText: output, // useful for debugging
-    mediaRequest,
-    actions
+    originalText: output,
+    actions,
+    meta: {
+      filtered: cleaned !== output,
+      toneMode,
+    },
   };
 }
 
