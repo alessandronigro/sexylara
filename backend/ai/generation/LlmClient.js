@@ -8,14 +8,9 @@ const Replicate = require("replicate");
 // PATCH: HUMAN VARIATION + SMART FALLBACK + GPT VALIDATION
 // ============================================================
 function npcFallbackHumanResponse() {
-  const variants = [
-    "Sto pensando un attimo, dimmi pure.",
-    "Eccomi, stavo leggendo un messaggio.",
-    "Ci sono, dimmi di più.",
-    "Stavo riflettendo un secondo.",
-    "Dimmi meglio cosa intendi."
-  ];
-  return variants[Math.floor(Math.random() * variants.length)];
+  // CRITICAL: Don't use phrases that GPT might learn and regenerate
+  // Return a clear error indicator instead
+  return "[ERROR: No LLM response generated]";
 }
 
 function humanizeNpcOutput(text, seedKey = "") {

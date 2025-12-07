@@ -11,3 +11,75 @@
 [2025-12-06T13:20:42.625Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
 [2025-12-06T13:20:42.633Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: b99cfd9b-6836-4a22-bbae-9bf5b05f260b
 [2025-12-06T13:20:42.734Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-06T17:55:53.527Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-06T17:57:01.632Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: 9c5231f1-96d9-4d7d-84bf-7ee812b110fb
+[2025-12-06T17:57:01.795Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-06T18:01:01.299Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: 9c5231f1-96d9-4d7d-84bf-7ee812b110fb
+[2025-12-06T18:01:01.491Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-06T18:01:01.493Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: 9c5231f1-96d9-4d7d-84bf-7ee812b110fb
+[2025-12-06T18:01:01.591Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-06T18:01:23.469Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: 9c5231f1-96d9-4d7d-84bf-7ee812b110fb
+[2025-12-06T18:01:23.595Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-06T18:01:23.597Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: 9c5231f1-96d9-4d7d-84bf-7ee812b110fb
+[2025-12-06T18:01:23.684Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T16:10:23.395Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T16:13:50.782Z] [INFO] [API] /api/npcs/generate called {
+  userId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  seedKeys: [
+    'gender',
+    'ageRange',
+    'name',
+    'archetype',
+    'vibe',
+    'sensuality',
+    'language',
+    'hints'
+  ]
+}
+[2025-12-07T16:14:01.647Z] [INFO] [NPC Generate] LLM raw length: 2622
+[2025-12-07T16:14:01.648Z] [INFO] [API] LifeCore validation { npcId: 'c124b86d-cd1a-4366-88ac-7b2cc96d30dd', ok: true, errors: [] }
+[2025-12-07T16:14:01.649Z] [INFO] [API] Avatar URL not valid, ignoring value: realistic
+[2025-12-07T16:14:01.648Z] [INFO] [API] SystemPrompt length { npcId: 'c124b86d-cd1a-4366-88ac-7b2cc96d30dd', promptSize: 3833 }
+[2025-12-07T16:14:01.837Z] [INFO] [NPC Generate] Saved npc row {
+  npcId: 'c124b86d-cd1a-4366-88ac-7b2cc96d30dd',
+  name: 'Chiara',
+  avatarUrl: null,
+  tone: 'explicit',
+  archetype: 'dominant'
+}
+[2025-12-07T16:14:12.121Z] [INFO] Generated avatar: https://replicate.delivery/xezq/1nsECN9LjTr0ENR8ZpAfeiYjXAySRbLe5zPpqEfVQqXPdWDXB/tmpob07zzv0.jpg
+[2025-12-07T16:14:13.655Z] [INFO] [NPC Generate] Avatar generated via Replicate {
+  npcId: 'c124b86d-cd1a-4366-88ac-7b2cc96d30dd',
+  promptAvatar: 'Chiara è una donna europea di 35 anni, con un fisico curvy, capelli castani di media lunghezza e occhi blu intensi. È alta 165 cm.'
+}
+[2025-12-07T16:14:13.730Z] [INFO] 🎤 Generating voice master for Chiara with params: {
+  text: 'Questo è il campione vocale iniziale di Chiara.',
+  pitch: 2,
+  speed: 1,
+  volume: 1,
+  bitrate: 128000,
+  channel: 'mono',
+  emotion: 'neutral',
+  voice_id: 'Friendly_Person',
+  sample_rate: 32000,
+  audio_format: 'mp3',
+  language_boost: 'Italian',
+  subtitle_enable: false,
+  english_normalization: false
+}
+[2025-12-07T16:14:16.293Z] [INFO] ✅ Voice master uploaded to Supabase: https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/voice-masters/voice_master_Chiara_1765124056108.mp3
+[2025-12-07T16:14:16.367Z] [INFO] ✅ NPC voice_master_url saved: https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/voice-masters/voice_master_Chiara_1765124056108.mp3
+[2025-12-07T16:14:16.512Z] [INFO] [NPC Generate] Upserted npc_profiles with npc_json + prompt_system {
+  npcId: 'c124b86d-cd1a-4366-88ac-7b2cc96d30dd',
+  hasLifeCore: true,
+  hasPrompt: true
+}
+[2025-12-07T16:14:16.513Z] [INFO] [NPC Generate] Completed response {
+  npcId: 'c124b86d-cd1a-4366-88ac-7b2cc96d30dd',
+  avatarUrl: 'https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/avatars/npc_c124b86d-cd1a-4366-88ac-7b2cc96d30dd_1765124052604.png',
+  promptSize: 3833
+}
+[2025-12-07T16:14:18.198Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T16:14:18.274Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T16:14:20.539Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T16:14:20.607Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true

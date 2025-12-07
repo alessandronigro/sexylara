@@ -9,62 +9,123 @@ const PromptOptimizer = require('../ai/media/PromptOptimizer');
 // ===============================================================
 //  GENERA AVATAR DI BASE (FOCUSSATO SUL VISO)
 // ===============================================================
+// async function generateAvatar(prompt, npcId = null, faceImageUrl = null, gender = null) {
+//   const replicate = new Replicate({
+//     auth: process.env.REPLICATE_API_TOKEN,
+//   });
+
+//   try {
+//     const genderHint = gender === 'male'
+//       ? 'handsome masculine man, male face, male body proportions'
+//       : gender === 'female'
+//         ? 'beautiful feminine woman, female face, female body proportions'
+//         : '';
+
+//     const output = await replicate.run(
+//       "konieshadow/fooocus-api:fda927242b1db6affa1ece4f54c37f19b964666bf23b0d06ae2439067cd344a4",
+//       {
+//         input: {
+//           prompt: `${prompt}, ${genderHint}, professional portrait, high quality, 8k, photorealistic`,
+//           sharpness: 2,
+//           uov_method: "Disabled",
+//           image_number: 1,
+//           guidance_scale: 5,
+//           refiner_switch: 0.4,
+//           negative_prompt: "distorted anatomy, incorrect proportions, cartoon face, plastic skin, glitch, watermark",
+//           style_selections: "Fooocus V2,Fooocus Semi Realistic",
+//           uov_upscale_value: 0,
+//           performance_selection: "Speed",
+//           aspect_ratios_selection: "1024*1024",
+//           ...(faceImageUrl
+//             ? {
+//               cn_type1: "FaceSwap",
+//               cn_img1: faceImageUrl,
+//               cn_weight1: 1.1,
+//             }
+//             : {}),
+//         },
+//       }
+//     );
+
+//     const avatarUrl = Array.isArray(output) ? output[0] : output.toString();
+
+//     logToFile(avatarUrl);
+//     const response = await fetch(avatarUrl);
+//     const arrayBuffer = await response.arrayBuffer();
+//     const buffer = Buffer.from(arrayBuffer);
+
+//     // Upload avatar to Supabase
+//     if (npcId) {
+//       const result = await storageService.uploadAvatar(buffer, npcId);
+//       return result.publicUrl;
+//     } else {
+//       const filename = `${uuidv4()}.png`;
+//       await writeFile(`public/${filename}`, buffer);
+//       return filename;
+//     }
+//   } catch (error) {
+//     logToFile(error);
+//     throw error;
+//   }
+// }
+
 async function generateAvatar(prompt, npcId = null, faceImageUrl = null, gender = null) {
   const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
   });
 
   try {
-    const genderHint = gender === 'male'
-      ? 'handsome masculine man, male face, male body proportions'
-      : gender === 'female'
-        ? 'beautiful feminine woman, female face, female body proportions'
-        : '';
+    // Gender hint coerente con avatar reali (Imagen accetta description-based, NON tag forzati)
+    const genderHint =
+      gender === "male"
+        ? "a handsome young man, masculine features"
+        : gender === "female"
+          ? "a beautiful young woman, feminine features"
+          : "";
 
-    const output = await replicate.run(
-      "konieshadow/fooocus-api:fda927242b1db6affa1ece4f54c37f19b964666bf23b0d06ae2439067cd344a4",
-      {
-        input: {
-          prompt: `${prompt}, ${genderHint}, professional portrait, high quality, 8k, photorealistic`,
-          sharpness: 2,
-          uov_method: "Disabled",
-          image_number: 1,
-          guidance_scale: 5,
-          refiner_switch: 0.4,
-          negative_prompt: "distorted anatomy, incorrect proportions, cartoon face, plastic skin, glitch, watermark",
-          style_selections: "Fooocus V2,Fooocus Semi Realistic",
-          uov_upscale_value: 0,
-          performance_selection: "Speed",
-          aspect_ratios_selection: "1024*1024",
-          ...(faceImageUrl
-            ? {
-              cn_type1: "FaceSwap",
-              cn_img1: faceImageUrl,
-              cn_weight1: 1.1,
-            }
-            : {}),
-        },
-      }
-    );
+    // Imagen NON supporta faceswap → ignoriamo faceImageUrl automaticamente
+    if (faceImageUrl) {
+      console.warn("⚠️ FaceSwap ignored: Imagen 4 Ultra does not support reference images.");
+    }
+
+    // Prompt finale ottimizzato per foto profilo NPC
+    const fullPrompt = `
+${prompt}
+
+${genderHint}.
+Cinematic 1:1 portrait, photorealistic, sharp eyes, natural skin texture.
+Soft lighting, shallow depth of field, expressive face.
+
+High-end professional photography.
+    `.trim();
+
+    const input = {
+      prompt: fullPrompt,
+      aspect_ratio: "1:1"
+    };
+
+    const output = await replicate.run("google/imagen-4-ultra", { input });
 
     const avatarUrl = Array.isArray(output) ? output[0] : output.toString();
 
-    logToFile(avatarUrl);
-    const response = await fetch(avatarUrl);
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    logToFile("Generated avatar: " + avatarUrl);
+
+    const imgResp = await fetch(avatarUrl);
+    const buffer = Buffer.from(await imgResp.arrayBuffer());
 
     // Upload avatar to Supabase
     if (npcId) {
       const result = await storageService.uploadAvatar(buffer, npcId);
       return result.publicUrl;
-    } else {
-      const filename = `${uuidv4()}.png`;
-      await writeFile(`public/${filename}`, buffer);
-      return filename;
     }
+
+    // Local save fallback
+    const filename = `${uuidv4()}.jpg`;
+    await writeFile(`public/${filename}`, buffer);
+    return filename;
+
   } catch (error) {
-    logToFile(error);
+    logToFile("Avatar ERROR: " + error);
     throw error;
   }
 }

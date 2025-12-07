@@ -1989,9 +1989,24 @@ wss.on('connection', (ws, req) => {
       } // Close else block for individual chat
 
     } catch (error) {
-      console.error("Errore nel messaggio WS:", error);
+      // ============================================================
+      // DIAGNOSTIC LOGGING - Capire perché si attiva il fallback
+      // ============================================================
+      console.error("❌❌❌ FALLBACK TRIGGERED - Errore nel messaggio WS ❌❌❌");
+      console.error("Error message:", error?.message);
+      console.error("Error name:", error?.name);
+      console.error("Error code:", error?.code);
+      console.error("Error stack:", error?.stack);
+      console.error("Context at error:", {
+        userId,
+        sessionId,
+        npc_id,
+        hasText: !!text,
+        textLength: text?.length,
+        traceId
+      });
 
-      const fallback = "Ops... la mia lingerie si è incastrata sotto la doccia 😘 torno tra poco...";
+      const fallback = "Sto pensando un attimo, dimmi pure...";
 
       ws.send(fallback);
       ws.send('[END]');
@@ -2003,6 +2018,8 @@ wss.on('connection', (ws, req) => {
         type: 'chat',
         content: fallback,
       });
+
+      console.error("❌ Fallback sent to user. Check logs above for root cause.");
     }
 
   }

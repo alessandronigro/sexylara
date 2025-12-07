@@ -161,7 +161,17 @@ IMPORTANT STYLE RULES:
       }
     }
     isEmpty = !llmResponse || /^\s*$/.test(llmResponse) || (typeof llmResponse === 'string' && llmResponse.includes('[EMPTY_RESPONSE]'));
-    const content = isEmpty ? fallbackText : llmResponse;
+
+    // DIAGNOSTIC: Log what we got from LLM
+    console.log('[openRouterService] LLM Response Check:', {
+      hasResponse: !!llmResponse,
+      responseLength: llmResponse?.length,
+      isEmpty,
+      responsePreview: llmResponse ? llmResponse.substring(0, 100) : 'NULL'
+    });
+
+    // PRESERVE VALID RESPONSES - Don't override with fallback
+    const content = llmResponse || fallbackText;
 
 
     const modeMatch = content.match(/\[MODE:(image|video|audio|chat)\]/i);
@@ -174,7 +184,18 @@ IMPORTANT STYLE RULES:
       .replace(/\s+/g, " ")     // normalize whitespace
       .trim();
 
-    if (!cleanedContent) cleanedContent = fallbackText;
+    // DIAGNOSTIC: Log after cleanup
+    console.log('[openRouterService] After cleanup:', {
+      cleanedLength: cleanedContent?.length,
+      cleanedPreview: cleanedContent ? cleanedContent.substring(0, 100) : 'NULL'
+    });
+
+    // PRESERVE: Don't override with fallback if we have content
+    if (!cleanedContent && llmResponse) {
+      console.warn('[openRouterService] ⚠️ Cleanup removed all content! Restoring original.');
+      cleanedContent = llmResponse.trim();
+    }
+
     logToFile(`[openRouterService] cleanedContent len=${(cleanedContent || '').length} mode=${mode}`);
 
     return { type: mode, output: cleanedContent.toString(), stateUpdates };
