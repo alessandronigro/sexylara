@@ -331,10 +331,8 @@ async function think(context) {
     mediaRequestOverride: null,
   });
 
-  // Fallback se risposta vuota o marker di errore
-  if (!processed.text || processed.text.trim().length === 0 || processed.text.includes('[EMPTY_RESPONSE]')) {
-    processed.text = "Ops, mi ero distratta un attimo. Dimmi pure, sono qui. ❤️";
-  }
+  // REMOVED: Fallback message replacement
+  // Let empty responses pass through without replacement
 
   // Se manca la foto utente e la richiesta è di couple_photo, forza testo esplicativo
   if (mediaRequestOverride?.type === 'user_photo_needed') {

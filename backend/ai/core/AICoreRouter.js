@@ -63,9 +63,19 @@ async function routeChat(request) {
   // 4. Think (BrainEngine)
   const result = await think(context);
 
+  // 🔍 DEBUG: Log the response from BrainEngine
+  console.log('🔍 [AICoreRouter] BrainEngine result:', {
+    hasText: !!result.text,
+    textLength: result.text?.length || 0,
+    textPreview: (result.text || '').substring(0, 100),
+    mediaRequest: result.mediaRequest,
+    actions: result.actions
+  });
+
   // 5. Return structured output
   return {
     text: result.text,
+    output: result.text, // Add output alias for compatibility
     mediaRequest: result.mediaRequest,
     actions: result.actions,
     updatedState: result.updatedState,

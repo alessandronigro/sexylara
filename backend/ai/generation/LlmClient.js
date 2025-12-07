@@ -5,32 +5,8 @@ const { veniceSafeCall } = require("./VeniceSafeCall");
 const Replicate = require("replicate");
 
 // ============================================================
-// PATCH: HUMAN VARIATION + SMART FALLBACK + GPT VALIDATION
+// REMOVED: humanizeNpcOutput function that modified LLM responses
 // ============================================================
-function npcFallbackHumanResponse() {
-  // CRITICAL: Don't use phrases that GPT might learn and regenerate
-  // Return a clear error indicator instead
-  return "[ERROR: No LLM response generated]";
-}
-
-function humanizeNpcOutput(text, seedKey = "") {
-  const seedChar = (seedKey || "X").toString().charCodeAt(0);
-  const seed = seedChar % 3;
-
-  let t = (text || "").trim();
-  if (!t) return npcFallbackHumanResponse();
-
-  // Evita frase vietata
-  if (/non riesco a rispondere adesso/i.test(t)) {
-    return npcFallbackHumanResponse();
-  }
-
-  if (seed === 0) t = t.replace(/\.$/, "") + " 🙂";
-  else if (seed === 1) t = "Mh… " + t;
-  else if (seed === 2) t = t + " eh.";
-
-  return t.trim();
-}
 
 async function generate(messagesArray, modelOverride = null, options = {}) {
   if (Array.isArray(modelOverride) && !options && !Array.isArray(options)) {
@@ -125,7 +101,7 @@ Don't be vague or ask for clarification. Engage immediately.`;
       rawOutput: (resp || '').substring(0, 500)
     }, null, 2));
 
-    return resp || "Non riesco a rispondere adesso.";
+    return resp || "";
   }
 
   // ==================================================
@@ -150,29 +126,57 @@ Don't be vague or ask for clarification. Engage immediately.`;
         temperature: 0.6
       };
 
+      console.log('[GPT] Input:', {
+        promptLength: userPrompt.length,
+        systemPromptLength: systemPrompt.length,
+        promptPreview: userPrompt.substring(0, 100)
+      });
+
       let text = "";
+      let eventCount = 0;
+
+      console.log('[GPT] Calling replicate.stream...');
       try {
-        for await (const ev of replicate.stream("openai/gpt-4o-mini", { input: gptInput })) {
-          if (typeof ev === "string") text += ev;
+        for await (const event of replicate.stream("openai/gpt-4o", { input: gptInput })) {
+          eventCount++;
+          const chunk = event.toString();  // ← FIX: Use .toString() as per Replicate docs!
+          console.log('[GPT] Stream event #' + eventCount + ':', {
+            type: typeof event,
+            chunkLength: chunk.length,
+            chunkPreview: chunk.substring(0, 50)
+          });
+          text += chunk;
         }
+        console.log('[GPT] Stream completed:', { eventCount, totalLength: text.length, preview: text.substring(0, 100) });
       } catch (streamErr) {
-        console.warn("[GPT] Stream failed, fallback to run:", streamErr?.message || streamErr);
-        const output = await replicate.run("openai/gpt-4o-mini", { input: gptInput });
-        text = Array.isArray(output) ? output.join("") : String(output || "");
+        console.error('[GPT] Stream failed:', streamErr?.message || streamErr);
+        console.log('[GPT] Falling back to run...');
+        try {
+          const output = await replicate.run("openai/gpt-4o", { input: gptInput });
+          console.log('[GPT] Run output:', {
+            type: typeof output,
+            isArray: Array.isArray(output),
+            length: Array.isArray(output) ? output.length : 'N/A'
+          });
+          text = Array.isArray(output) ? output.join("") : String(output || "");
+        } catch (runErr) {
+          console.error('[GPT] Run also failed:', runErr?.message || runErr);
+          text = "";
+        }
       }
 
-      const finalGpt = (text || '').trim() || "Non riesco a rispondere adesso.";
-      const npcId = options.npcId || "X";
-      const enhancedGpt = humanizeNpcOutput(finalGpt, npcId);
+      const finalGpt = (text || '').trim();
+
+      console.log('[GPT] Final result:', { length: finalGpt.length, preview: finalGpt.substring(0, 100) });
 
       console.log('[TRACE][PIPELINE]', JSON.stringify({
         stage: 'LlmClient',
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         isExplicitMode: false,
-        rawOutput: (enhancedGpt || '').substring(0, 500)
+        rawOutput: (finalGpt || '').substring(0, 500)
       }, null, 2));
 
-      return enhancedGpt;
+      return finalGpt;
     } catch (gptErr) {
       console.warn("[GPT] Fallback to Venice due to error:", gptErr?.message || gptErr);
     }
@@ -196,8 +200,8 @@ Don't be vague or ask for clarification. Engage immediately.`;
     rawOutput: (resp || '').substring(0, 500)
   }, null, 2));
 
-  const veniceOut = resp && resp.trim() ? resp.trim() : npcFallbackHumanResponse();
-  return humanizeNpcOutput(veniceOut, options.npcId || "X");
+  const veniceOut = resp && resp.trim() ? resp.trim() : "";
+  return veniceOut;
 }
 
 module.exports = { generate };

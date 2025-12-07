@@ -83,3 +83,103 @@
 [2025-12-07T16:14:18.274Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
 [2025-12-07T16:14:20.539Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
 [2025-12-07T16:14:20.607Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T19:51:42.699Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T19:51:42.842Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:19:31.314Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:20:01.399Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:20:01.691Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:21:25.079Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:21:29.015Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:21:29.420Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:21:29.426Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:21:29.521Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:23:21.079Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:23:23.924Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:23:24.297Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:23:24.302Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:23:24.407Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:26:06.579Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:26:50.926Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:26:55.157Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:26:55.457Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:26:55.465Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:26:55.594Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:28:19.448Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:29:15.638Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:29:21.437Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:29:21.700Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:29:21.706Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:29:21.788Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:30:11.219Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:30:32.103Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:31:02.822Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:31:03.106Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:31:03.111Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:31:03.245Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:32:02.738Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:32:53.321Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:32:53.792Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:32:53.797Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:32:53.905Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:33:01.153Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:33:12.135Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:33:12.338Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:33:12.345Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:33:12.420Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:34:08.473Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:34:08.658Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:34:08.681Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:34:08.764Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:35:59.855Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:36:03.272Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:36:04.604Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:36:06.138Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:36:06.367Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:36:06.369Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:36:06.474Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:37:15.443Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:37:15.570Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:38:08.328Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:38:08.498Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:38:08.500Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:38:08.604Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:39:25.777Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:39:25.916Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:39:25.918Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:39:26.005Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:40:25.852Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:40:26.073Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:40:26.074Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:40:26.190Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:41:21.357Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:41:21.504Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:41:21.505Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:41:21.558Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:41:54.789Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:41:55.119Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:41:55.121Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:41:55.240Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:42:19.917Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:42:20.207Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:42:20.208Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:42:20.381Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:43:52.947Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:43:53.320Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:43:53.323Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:43:53.893Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:44:59.317Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:44:59.486Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:44:59.487Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:44:59.638Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:47:00.410Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:47:00.604Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:47:00.606Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:47:00.698Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:48:24.954Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:48:25.171Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:48:25.173Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:48:25.276Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:52:06.457Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
+[2025-12-07T20:52:06.641Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-07T20:52:59.288Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-07T20:53:22.640Z] [INFO] 📦 API server in ascolto su http://localhost:4000

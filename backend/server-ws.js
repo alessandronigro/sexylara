@@ -1104,8 +1104,21 @@ wss.on('connection', (ws, req) => {
           recipient_user_id: recipientUser ? recipientUser.id : null
         });
         console.log('💾 User message saved:', savedUserMessage.id);
+        console.error('🔍 [DEBUG] Message saved, continuing to process AI response...');
+        console.error('🔍 [DEBUG] About to send ACK, ws.readyState:', ws.readyState);
 
-        ws.send(JSON.stringify({ traceId, type: 'ack', serverId: savedUserMessage.id }));
+        try {
+          console.error('🔍 [DEBUG] Creating ACK JSON...');
+          const ackMessage = JSON.stringify({ traceId, type: 'ack', serverId: savedUserMessage.id });
+          console.error('🔍 [DEBUG] ACK JSON created, length:', ackMessage.length);
+          console.error('🔍 [DEBUG] Calling ws.send...');
+          ws.send(ackMessage);
+          console.error('🔍 [DEBUG] ACK sent to client');
+        } catch (sendErr) {
+          console.error('❌ [DEBUG] Error sending ACK:', sendErr);
+        }
+
+        console.error('🔍 [DEBUG] Checking recipientUser:', { hasRecipientUser: !!recipientUser, recipientUserId: recipientUser?.id });
 
         if (recipientUser) {
           console.log(`👤 User-to-User message to ${recipientUser.username}`);
@@ -1163,6 +1176,7 @@ wss.on('connection', (ws, req) => {
           }
         }
 
+        console.log('🔍 [DEBUG] About to call classifyIntent with text:', (text || '').substring(0, 50));
         const intentLabel = await classifyIntent(text || '', 'user');
         console.log('🧭 Detected intent user:', intentLabel);
 
@@ -1356,6 +1370,7 @@ wss.on('connection', (ws, req) => {
         }
 
         // Usa AI Core Router v2.1 per risposta intelligente
+        console.log('🔍 [DEBUG] About to call AICoreRouter.routeChat for npc:', npc.id);
         const response = await AICoreRouter.routeChat({
           userId,
           npcId: npc.id,
@@ -1367,12 +1382,31 @@ wss.on('connection', (ws, req) => {
             userPrefs
           }
         });
+        console.log('🔍 [DEBUG] AICoreRouter.routeChat returned, response:', { hasText: !!response?.text, hasOutput: !!response?.output });
+
+        // 🔍 DEBUG: Log the response from AICoreRouter
+        console.log('🔍 [server-ws] AICoreRouter response:', {
+          hasText: !!response.text,
+          hasOutput: !!response.output,
+          textLength: response.text?.length || 0,
+          outputLength: response.output?.length || 0,
+          textPreview: (response.text || response.output || '').substring(0, 100)
+        });
 
         let output = response.text || response.output;
         let type = classifierMediaType || 'chat';
+
+        // 🔍 DEBUG: Log output after extraction
+        console.log('🔍 [server-ws] Extracted output:', {
+          hasOutput: !!output,
+          outputLength: output?.length || 0,
+          outputPreview: (output || '').substring(0, 100)
+        });
+
         // Gestione errori Venice
         let npcIntent = 'npc_send_none'; // Default: no media
         if (output === "[VENICE_ERROR]" || output === "[EMPTY_RESPONSE]") {
+          console.log('⚠️ [server-ws] Detected error marker, replacing with fallback');
           output = "Amore, scusa… credo di aver perso il filo. Cosa volevi dirmi?";
           npcIntent = "npc_send_none";
           type = 'chat';
@@ -1461,10 +1495,8 @@ wss.on('connection', (ws, req) => {
 
         console.log('🤖 Reply generated:', { type, output: output?.substring(0, 500) });
 
-        // Fallback se risposta è vuota o difensiva
-        if (!output || output.trim() === '') {
-          output = "Mmm... sto cercando le parole giuste per rispondere al tuo desiderio 😘";
-        }
+        // REMOVED: Fallback message replacement for empty output
+        // Let empty responses pass through without replacement
 
         // Check if user shared their name (simple heuristic or from intent engine)
         // Note: Intent analysis is done inside brainEngine, but we can do a quick check here or rely on brainEngine to return intent
@@ -1516,14 +1548,8 @@ wss.on('connection', (ws, req) => {
         // ===== HANDLE MEDIA GENERATION solo se intentLLM richiede media =====
         const generationType = type;
         const mediaRequested = generationType === 'photo' || generationType === 'video' || generationType === 'audio' || generationType === 'couple_photo';
-        if (output && (output.includes("[VENICE_ERROR]") || output.includes("[EMPTY_RESPONSE]"))) {
-          type = 'chat';
-          output = "Ops, mi ero distratta un attimo. Dimmi pure, sono qui. ❤️";
-        }
-        if (!output || !output.trim()) {
-          output = "Ops, mi ero distratta un attimo. Dimmi pure, sono qui. ❤️";
-          type = 'chat';
-        }
+        // REMOVED: Fallback responses that replace valid LLM output
+        // Let empty responses pass through without replacement
 
         if (mediaRequested) {
           // Controlla se ci sono almeno 10 messaggi prima di accondiscendere

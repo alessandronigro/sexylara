@@ -235,10 +235,10 @@ sessuale_esplicito
       auth: process.env.REPLICATE_API_KEY
     });
 
-    for await (const ev of replicate.stream("openai/gpt-4o-mini", {
+    for await (const ev of replicate.stream("openai/gpt-4o", {
       input: { system_prompt: sys, prompt }
     })) {
-      if (typeof ev === "string") full += ev;
+      full += ev.toString();
     }
 
     const clean = full.trim().toLowerCase();

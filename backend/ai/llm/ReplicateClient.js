@@ -13,7 +13,7 @@ class ReplicateClient {
 
   async stream(model, input, onToken) {
     for await (const event of this.client.stream(model, { input })) {
-      onToken(String(event || ""));
+      onToken(event.toString());
     }
   }
 }

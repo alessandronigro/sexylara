@@ -13,11 +13,11 @@ async function callGPT(systemPrompt, userPrompt, stream = false) {
 
   if (stream) {
     let acc = "";
-    await replicate.stream("openai/gpt-4o-mini", input, (tk) => { acc += tk; });
+    await replicate.stream("openai/gpt-4o", input, (tk) => { acc += tk; });
     return acc;
   }
 
-  return await replicate.call("openai/gpt-4o-mini", input);
+  return await replicate.call("openai/gpt-4o", input);
 }
 
 async function routeLLM(systemPrompt, history, userMessage, npcModel, options = {}) {
