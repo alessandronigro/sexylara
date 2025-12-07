@@ -352,7 +352,8 @@ async function saveMessage({ user_id, session_id, role, type, content, npc_id, r
 
 
 function splitIntoChunks(text, maxLength = 250) {
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  // FIX: Added |[^.!?]+$ to capture text at the end that doesn't have punctuation
+  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
   const chunks = [];
   let current = '';
 
@@ -947,6 +948,14 @@ wss.on('connection', (ws, req) => {
               console.error(`❌ Errore salvataggio risposta ${ai.name}:`, aiMsgError);
               sendNpcStatus(ws, ai.id, '', traceId);
               continue;
+            }
+
+            // Add log to inspect text content before sending
+            const type = 'group_message'; // Assuming 'group_message' for this context
+            const cleanedOutput = output; // 'output' is already the cleaned text
+            console.log(`📤 [DEBUG] Sending chat to client. Length: ${cleanedOutput.length}`);
+            if (cleanedOutput.includes("'")) {
+              console.warn(`⚠️ [DEBUG] Text contains apostrophe: "${cleanedOutput}"`);
             }
 
             ws.send(JSON.stringify({
