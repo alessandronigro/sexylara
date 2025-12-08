@@ -30,6 +30,8 @@ import 'services/notification_service.dart';
 import 'services/random_message_service.dart';
 import 'screens/splash_screen.dart';
 import 'screens/public_feed_screen.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 
 Future<void> main() async {
@@ -162,6 +164,8 @@ class ThrilMeApp extends ConsumerWidget {
     return MaterialApp.router(
       routerConfig: router,
       title: 'ThrilMe',
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
