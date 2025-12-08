@@ -21,6 +21,7 @@ const messageRoutes = require('./routes/message');
 const groupRoutes = require('./routes/group');
 const { brainEngine } = require('./ai/brainEngine'); // legacy (potrebbe essere rimosso dopo)
 const AICoreRouter = require('./ai/core/AICoreRouter'); // ✨ AI Core v2.1
+const SafeMediaGenerationService = require('./ai/media/SafeMediaGenerationService'); // Safe Image Gen
 const memoryFlush = require('./ai/scheduler/memoryFlush'); // ✨ Memory scheduler
 const globalScheduler = require('./ai/scheduler/globalScheduler');
 const wsNotificationService = require('./services/wsNotificationService');
@@ -1378,16 +1379,61 @@ wss.on('connection', (ws, req) => {
           }
         }
 
+        // Prepare history (Oldest first)
+        const historyContext = recentMsgs ? [...recentMsgs].reverse() : [];
+
         // Usa AI Core Router v2.1 per risposta intelligente
         console.log('🔍 [DEBUG] About to call AICoreRouter.routeChat for npc:', npc.id);
+
+        let generatedMediaResult = null;
+        if (classifierMediaType === 'photo') {
+          try {
+            console.log('📸 Triggering Safe Image Generation...');
+            generatedMediaResult = await SafeMediaGenerationService.processImageRequest(
+              userId,
+              npc,
+              historyContext, // Use prepared history
+              text
+            );
+
+            if (generatedMediaResult && generatedMediaResult.url) {
+              // Send image immediately
+              ws.send(JSON.stringify({
+                traceId,
+                role: 'assistant',
+                type: 'image',
+                content: generatedMediaResult.url,
+                caption: generatedMediaResult.caption,
+                npc_id: npc.id
+              }));
+
+              // Save to DB
+              await saveMessage({
+                user_id: userId,
+                session_id: sessionId,
+                role: 'assistant',
+                type: 'image',
+                content: generatedMediaResult.url,
+                npc_id: npc.id
+              });
+
+              console.log('✅ Safe Image sent:', generatedMediaResult.url);
+            }
+          } catch (imgErr) {
+            console.error('❌ Safe Image Gen Error:', imgErr);
+            // Fallback or just continue to text
+          }
+        }
+
         const response = await AICoreRouter.routeChat({
           userId,
           npcId: npc.id,
           message: text,
-          history: recentMsgs ? recentMsgs.reverse() : [],
+          history: historyContext,
           media: mediaAnalysisContext ? { type: 'image', url: mediaAnalysisContext.url } : null,
           options: {
             forcedMediaType: classifierMediaType,
+            generatedMedia: generatedMediaResult, // Pass info to brain so it knows image was sent
             userPrefs
           }
         });
