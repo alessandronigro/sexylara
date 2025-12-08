@@ -11,6 +11,7 @@ import 'screens/payment_methods_screen.dart';
 import 'providers/session_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
+import 'screens/forgot_password_screen.dart';
 import 'screens/contacts_screen.dart';
 import 'screens/create_npc_screen.dart';
 import 'screens/chat_screen.dart';
@@ -58,7 +59,7 @@ class ThrilMeApp extends ConsumerWidget {
     final router = GoRouter(
       initialLocation: '/splash',
       redirect: (context, state) {
-        const authFlow = ['/login', '/register', '/splash'];
+        const authFlow = ['/login', '/register', '/splash', '/forgot-password'];
         final isAuthFlow = authFlow.contains(state.location);
         if (!session.authenticated && !isAuthFlow) {
           return '/login';
@@ -77,6 +78,9 @@ class ThrilMeApp extends ConsumerWidget {
         GoRoute(
             path: '/register',
             builder: (context, state) => const RegisterScreen()),
+        GoRoute(
+            path: '/forgot-password',
+            builder: (context, state) => const ForgotPasswordScreen()),
         GoRoute(path: '/', builder: (context, state) => const ContactsScreen()),
         GoRoute(path: '/contacts', builder: (context, state) => const ContactsScreen()),
         GoRoute(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase;
 
 import '../providers/session_provider.dart';
 import '../services/supabase_service.dart';
@@ -32,8 +34,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go('/');
       }
     } catch (error) {
+      if (!mounted) return;
+      String errorMessage = error.toString();
+      
+      if (error is supabase.AuthException) {
+        if (error.message.contains('Invalid login credentials')) {
+          errorMessage = AppLocalizations.of(context)!.authInvalidCredentials;
+        } else if (error.message.contains('Email not found')) {
+            errorMessage = AppLocalizations.of(context)!.authEmailNotFound; // Potrebbe non essere esposto per sicurezza
+        }
+        // Fallback or generic mapping
+      }
+
       setState(() {
-        _error = error.toString();
+        _error = errorMessage;
       });
     } finally {
       if (mounted) {
@@ -139,7 +153,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     textAlign: TextAlign.center,
                   ),
                 ],
-                const SizedBox(height: 32),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => context.push('/forgot-password'),
+                    child: Text(
+                      AppLocalizations.of(context)!.forgotPassword,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   height: 50,

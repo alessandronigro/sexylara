@@ -1,6 +1,5 @@
-// lib/l10n/app_en.arb
 {
-  "appTitle": "ThrilMe",
+  "appTitle": "ThrillMe",
   "profile": "Profile",
   "subscription": "Subscription",
   "paymentMethod": "Payment Method",
@@ -31,5 +30,14 @@
   "navGroups": "My Groups",
   "navCreateThriller": "Create Thriller",
   "navInviteThriller": "Invite Thriller",
-  "navProfile": "Profile"
+  "navProfile": "Profile",
+  "authInvalidCredentials": "Login failed. Check email and password.",
+  "authEmailNotFound": "Email not found.",
+  "authPasswordWrong": "Wrong password.",
+  "forgotPassword": "Forgot Password?",
+  "resetPassword": "Reset Password",
+  "sendResetLink": "Send Reset Link",
+  "resetLinkSent": "Link sent! Check your email.",
+  "checkEmailForReset": "Check your email for the reset link.",
+  "validEmailRequired": "Please enter a valid email address."
 }

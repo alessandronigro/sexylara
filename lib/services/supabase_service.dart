@@ -30,6 +30,10 @@ class SupabaseService {
     return client.auth.signInWithPassword(email: email, password: password);
   }
 
+  Future<void> resetPasswordForEmail(String email) async {
+    await client.auth.resetPasswordForEmail(email, redirectTo: kIsWeb ? Uri.base.origin : null);
+  }
+
   Future<void> signOut() async {
     await client.auth.signOut();
   }
