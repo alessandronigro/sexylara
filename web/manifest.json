@@ -1,11 +1,11 @@
 {
-    "name": "thrilme",
-    "short_name": "thrilme",
+    "name": "ThrillMe",
+    "short_name": "ThrillMe",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0d0d0d",
+    "theme_color": "#1a0b2e",
+    "description": "ThrillMe – Talk. Connect. Feel.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
