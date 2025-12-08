@@ -8,7 +8,7 @@ const fetch = require('node-fetch');
 class VisionEngine {
     constructor() {
         this.apiKey = process.env.OPENAI_API_KEY;
-        this.model = 'gpt-4o-mini'; // Supports vision
+        this.model = 'gpt-4o'; // Supports vision
     }
 
     /**

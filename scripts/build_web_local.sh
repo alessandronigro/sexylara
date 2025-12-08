@@ -23,6 +23,7 @@ cd "$REPO_ROOT"
 
 flutter clean
 flutter pub get
+flutter gen-l10n
 
 flutter build web \
   --output="$REPO_ROOT/build/web-local" \
