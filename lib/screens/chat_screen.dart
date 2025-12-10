@@ -410,7 +410,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     }
-    }
   }
 
   Future<void> _publishToFeed(Message message) async {
