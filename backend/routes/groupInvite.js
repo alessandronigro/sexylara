@@ -111,7 +111,9 @@ router.post('/group/invite', async (req, res) => {
   try {
     // Check permissions using middleware logic (owner always has permission)
     const action = normalizedType === 'npc' ? 'invite_npc' : 'invite_user';
+    console.log(`[POST /api/group/invite] Checking permission for userId=${invitedBy}, groupId=${groupId}, action=${action}`);
     const hasPermission = await checkPermission(invitedBy, groupId, action);
+    console.log(`[POST /api/group/invite] Permission check result: ${hasPermission}`);
 
     if (!hasPermission) {
       return res.status(403).json({
@@ -231,7 +233,9 @@ router.post('/group/invite/user', async (req, res) => {
 
   try {
     // Check permissions
+    console.log(`[POST /api/group/invite/user] Checking permission for userId=${senderId}, groupId=${groupId}, action=invite_user`);
     const hasPermission = await checkPermission(senderId, groupId, 'invite_user');
+    console.log(`[POST /api/group/invite/user] Permission check result: ${hasPermission}`);
 
     if (!hasPermission) {
       return res.status(403).json({
@@ -374,7 +378,9 @@ router.post('/group/invite/npc', async (req, res) => {
   try {
     // Check permissions
     const action = 'invite_npc';
+    console.log(`[POST /api/group/invite/npc] Checking permission for userId=${senderId}, groupId=${groupId}, action=${action}`);
     const hasPermission = await checkPermission(senderId, groupId, action);
+    console.log(`[POST /api/group/invite/npc] Permission check result: ${hasPermission}`);
 
     if (!hasPermission) {
       return res.status(403).json({

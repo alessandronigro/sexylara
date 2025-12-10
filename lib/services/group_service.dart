@@ -101,12 +101,21 @@ class GroupService {
       }),
     );
 
-    if (resp.statusCode != 200) {
-      final err = jsonDecode(resp.body);
-      throw Exception(err['error'] ?? 'Failed to invite Thriller');
-    }
+    // Always return the response body, whether success or error
+    // This allows the UI to handle different cases appropriately
+    final body = jsonDecode(resp.body);
     
-    return jsonDecode(resp.body); // Returns status and reason
+    if (resp.statusCode == 200) {
+      return body; // {success: true, added: 'npc', ...}
+    } else {
+      // Return error details so UI can handle them
+      return {
+        'success': false,
+        'error': body['error'] ?? 'Failed to invite Thriller',
+        'code': body['code'],
+        'statusCode': resp.statusCode,
+      };
+    }
   }
 
   Future<void> respondToInvite(String inviteId, bool accept) async {

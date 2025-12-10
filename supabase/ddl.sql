@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS public.npcs ( id uuid DEFAULT gen_random_uuid() PRIMA
 
 CREATE TABLE IF NOT EXISTS public.conversations ( id uuid DEFAULT gen_random_uuid() PRIMARY KEY, user_id uuid, npc_id uuid, last_message_at timestamptz DEFAULT now(), last_message_preview text, unread_count integer DEFAULT 0, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), girlfriend_id uuid, CONSTRAINT conversations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id), CONSTRAINT conversations_npc_id_fkey FOREIGN KEY (npc_id) REFERENCES public.npcs(id) );
 
-CREATE TABLE IF NOT EXISTS public.groups ( id uuid DEFAULT uuid_generate_v4() PRIMARY KEY, name text, user_id uuid, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now() );
+CREATE TABLE IF NOT EXISTS public.groups ( id uuid DEFAULT uuid_generate_v4() PRIMARY KEY, name text, user_id uuid, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), allow_member_invite boolean DEFAULT false );
 
 CREATE TABLE IF NOT EXISTS public.group_members ( id uuid DEFAULT uuid_generate_v4() PRIMARY KEY, group_id uuid, npc_id uuid, created_at timestamptz DEFAULT now(), member_id uuid, member_type member_type_enum DEFAULT 'ai'::member_type_enum, role role_enum DEFAULT 'member'::role_enum, CONSTRAINT group_members_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id), CONSTRAINT group_members_npc_id_fkey FOREIGN KEY (npc_id) REFERENCES public.npcs(id) );
 

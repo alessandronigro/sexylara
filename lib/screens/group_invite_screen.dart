@@ -24,6 +24,7 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
   bool _isLoading = true;
   final Set<String> _invitingIds = {};
   final Set<String> _invitedIds = {};
+  final Set<String> _pendingIds = {}; // Track pending invites (yellow)
 
   @override
   void initState() {
@@ -44,8 +45,7 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
         _myAi = allContacts.where((ai) => ai.isOwned).toList();
         _publicAi = allContacts.where((ai) => !ai.isOwned && ai.isPublic).toList();
         _isLoading = false;
-        _invitedIds
-          ..clear(); // reset local invited state
+        // Don't clear _invitedIds - keep track of who we've invited this session
       });
     } catch (e) {
       if (mounted) {
@@ -59,42 +59,74 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
 
   Future<void> _invite(AiContact contact) async {
     if (_invitingIds.contains(contact.id) || _invitedIds.contains(contact.id)) return;
+    
+    setState(() {
+      _invitingIds.add(contact.id);
+    });
+    
     try {
-      setState(() {
-        _invitingIds.add(contact.id);
-      });
       final groupService = ref.read(groupServiceProvider);
-      
       final result = await groupService.inviteNpc(
         groupId: widget.groupId,
         npcId: contact.id,
       );
 
-      if (mounted) {
-        final status = result['status'];
-        final reason = result['reason'];
-        
-        String msg = '';
-        if (status == 'accepted') {
-          msg = '${contact.name} joined the group!';
-        } else if (status == 'pending_approval') {
-          msg = 'Invite sent to owner for approval.';
-        } else if (status == 'rejected') {
-          msg = '${contact.name} declined: $reason';
-        } else {
-          msg = 'Invite status: $status';
-        }
+      if (!mounted) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
-        
-        if (status == 'accepted' || status == 'pending_approval') {
-          setState(() {
-            _invitedIds.add(contact.id);
-          });
-        }
+      // Service now returns {success: true/false, ...} instead of throwing
+      final success = result['success'] == true;
+      final added = result['added'];
+      final npcName = result['npcName'] ?? contact.name;
+      final error = result['error'];
+      final code = result['code'];
+      
+      // DEBUG: Print the actual response
+      print('DEBUG invite response: $result');
+      print('DEBUG success=$success, code=$code, error=$error');
+      
+      String msg = '';
+      bool markAsInvited = false;
+      bool isPending = false;
+      
+      if (success && added == 'npc') {
+        // NPC successfully added to group (immediate)
+        msg = '$npcName joined the group!';
+        markAsInvited = true;
+        isPending = false;
+      } else if (code == 'NPC_ALREADY_MEMBER') {
+        // NPC is already in the group
+        msg = '$npcName is already in the group';
+        markAsInvited = true;
+        isPending = false;
+      } else if (code == 'INVITE_ALREADY_PENDING') {
+        // Invite already sent and pending
+        msg = 'Invite already pending for $npcName';
+        markAsInvited = true;
+        isPending = true;
+      } else if (success) {
+        // Generic success (e.g., user invite sent)
+        msg = 'Invite sent to $npcName!';
+        markAsInvited = true;
+        isPending = true;
+      } else {
+        msg = error ?? 'Failed to invite $npcName';
       }
+
+      if (markAsInvited) {
+        print('DEBUG: Marking ${contact.id} as invited (pending=$isPending)');
+        setState(() {
+          _invitedIds.add(contact.id);
+          if (isPending) {
+            _pendingIds.add(contact.id);
+          }
+        });
+        print('DEBUG: _invitedIds now contains: $_invitedIds');
+        print('DEBUG: _pendingIds now contains: $_pendingIds');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,6 +177,7 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
       itemBuilder: (context, index) {
         final ai = contacts[index];
         return ListTile(
+          key: ValueKey('${ai.id}_${_invitedIds.contains(ai.id)}_${_invitingIds.contains(ai.id)}_${_pendingIds.contains(ai.id)}'),
           leading: CircleAvatar(
             backgroundImage: ai.avatar != null ? NetworkImage(ai.avatar!) : null,
             child: ai.avatar == null ? Text(ai.name[0]) : null,
@@ -160,14 +193,14 @@ class _GroupInviteScreenState extends ConsumerState<GroupInviteScreen> with Sing
                 : () => _invite(ai),
             style: ElevatedButton.styleFrom(
               backgroundColor: _invitedIds.contains(ai.id)
-                  ? Colors.green
+                  ? (_pendingIds.contains(ai.id) ? Colors.orange : Colors.green)
                   : Theme.of(context).primaryColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
             child: Text(
               _invitedIds.contains(ai.id)
-                  ? 'Invited'
+                  ? (_pendingIds.contains(ai.id) ? 'Pending' : 'Invited')
                   : (_invitingIds.contains(ai.id) ? 'Sending...' : 'Invite'),
             ),
           ),

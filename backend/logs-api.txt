@@ -183,3 +183,138 @@
 [2025-12-07T20:52:06.641Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
 [2025-12-07T20:52:59.288Z] [INFO] 📦 API server in ascolto su http://localhost:4000
 [2025-12-07T20:53:22.640Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-10T16:15:29.530Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-10T16:15:32.253Z] [INFO] ⚠️ User 5b3b2009-fc62-4930-a304-580662d8d2f1 not connected or connection not ready
+[2025-12-10T16:15:34.001Z] [INFO] ⚠️ User 695308a8-c33b-4ef1-aa6d-3c91603650cc not connected or connection not ready
+[2025-12-10T16:15:35.662Z] [INFO] ⚠️ User 4060bdff-7003-453a-95ca-4bd916fd2bb6 not connected or connection not ready
+[2025-12-10T16:16:17.217Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:16:17.217Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:16:17.311Z] [INFO] [Permission Check] Error fetching group: {
+  code: '42703',
+  details: null,
+  hint: null,
+  message: 'column groups.allow_member_invite does not exist'
+}
+[2025-12-10T16:16:17.312Z] [INFO] [Permission Check] Group data: {
+  groupUserId: undefined,
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'undefined',
+  requestUserIdType: 'string',
+  allowMemberInvite: undefined
+}
+[2025-12-10T16:16:17.312Z] [INFO] [Permission Check] User is group owner: false
+[2025-12-10T16:16:17.401Z] [INFO] [Permission Check] Result: false (member invites not allowed)
+[2025-12-10T16:16:17.401Z] [INFO] [Permission Check] User role: owner
+[2025-12-10T16:16:17.401Z] [INFO] [POST /api/group/invite/user] Permission check result: false
+[2025-12-10T16:23:10.304Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-10T16:24:35.248Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:24:35.248Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:24:35.325Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:24:35.326Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:24:35.326Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:24:35.326Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:24:35.720Z] [INFO] ⚠️ User 5b3b2009-fc62-4930-a304-580662d8d2f1 not connected or connection not ready
+[2025-12-10T16:29:31.418Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:29:31.419Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:29:31.497Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:29:31.497Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:29:31.497Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:29:31.497Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:29:41.699Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:29:41.699Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:29:41.819Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:29:41.819Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:29:41.819Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:29:41.819Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:34:01.667Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:34:01.667Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:34:01.802Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:34:01.802Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:34:01.802Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:34:01.802Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:34:02.204Z] [INFO] ⚠️ User 4060bdff-7003-453a-95ca-4bd916fd2bb6 not connected or connection not ready
+[2025-12-10T16:34:12.248Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:34:12.248Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:34:12.383Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:34:12.383Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:34:12.383Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:34:12.383Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:34:12.716Z] [INFO] ⚠️ User 695308a8-c33b-4ef1-aa6d-3c91603650cc not connected or connection not ready
+[2025-12-10T16:36:26.677Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:36:26.678Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:36:26.750Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:36:26.750Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:36:26.750Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:36:26.750Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:36:30.711Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:36:30.711Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:36:30.785Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:36:30.785Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:36:30.785Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:36:30.785Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:38:43.511Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:38:43.511Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:38:43.565Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:38:43.566Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:38:43.566Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-10T16:38:43.566Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:39:06.815Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:39:06.815Z] [INFO] [Permission Check] userId=88ced72a-cdc4-44ad-8b75-842e76387427, groupId=4c59fa43-0d46-4680-bc51-39eb2603699b, action=invite_user
+[2025-12-10T16:39:06.889Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-10T16:39:06.889Z] [INFO] [Permission Check] Group data: {
+  groupUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  requestUserId: '88ced72a-cdc4-44ad-8b75-842e76387427',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-10T16:39:06.889Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-10T16:39:06.889Z] [INFO] [Permission Check] Result: true (owner bypass)
