@@ -448,93 +448,103 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (_) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Aggiungi partecipanti', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('I miei contatti', style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)),
+        return StatefulBuilder(
+          builder: (context, sheetSetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Aggiungi partecipanti', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('I miei contatti', style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 200,
+                      child: _contacts.isEmpty
+                          ? const Center(child: Text('Nessun contatto', style: TextStyle(color: Colors.white70)))
+                          : ListView.builder(
+                              itemCount: _contacts.length,
+                              itemBuilder: (_, idx) {
+                                final c = _contacts[idx];
+                                final already = _memberIds.contains(c.id);
+                                final invited = _invitedIds.contains(c.id);
+                                final isNpc = c.type == 'npc';
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.grey[800],
+                                    backgroundImage: c.avatar != null ? NetworkImage(c.avatar!) : null,
+                                    child: c.avatar == null ? Icon(isNpc ? Icons.smart_toy : Icons.person, color: Colors.white) : null,
+                                  ),
+                                  title: Text(c.name, style: const TextStyle(color: Colors.white)),
+                                  subtitle: Text(
+                                    invited ? 'Invitato' : (isNpc ? 'Thriller' : 'Utente'),
+                                    style: TextStyle(color: invited ? Colors.orangeAccent : Colors.grey[600]),
+                                  ),
+                                  trailing: IconButton(
+                                    icon: Icon(
+                                      already ? Icons.check : (invited ? Icons.schedule : Icons.person_add_alt),
+                                      color: already ? Colors.greenAccent : (invited ? Colors.orangeAccent : Colors.pinkAccent),
+                                    ),
+                                    onPressed: already || invited || _addingMembers ? null : () async {
+                                      await _addContactToGroup(c);
+                                      sheetSetState(() {});
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('I miei Thriller', style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 220,
+                      child: _availableNpcs.isEmpty
+                          ? const Center(child: Text('Nessun Thriller disponibile', style: TextStyle(color: Colors.white70)))
+                          : ListView.builder(
+                              itemCount: _availableNpcs.length,
+                              itemBuilder: (_, idx) {
+                                final npc = _availableNpcs[idx];
+                                final already = _memberIds.contains(npc.id);
+                                final invited = _invitedIds.contains(npc.id);
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.grey[800],
+                                    backgroundImage: npc.avatarUrl != null ? NetworkImage(npc.avatarUrl!) : null,
+                                    child: npc.avatarUrl == null ? const Icon(Icons.smart_toy, color: Colors.white) : null,
+                                  ),
+                                  title: Text(npc.name, style: const TextStyle(color: Colors.white)),
+                                  subtitle: Text(
+                                    invited ? 'Invitato' : npc.displayDescription,
+                                    style: TextStyle(color: invited ? Colors.orangeAccent : Colors.grey[600]),
+                                  ),
+                                  trailing: IconButton(
+                                    icon: Icon(
+                                      already ? Icons.check : (invited ? Icons.schedule : Icons.person_add_alt),
+                                      color: already ? Colors.greenAccent : (invited ? Colors.orangeAccent : Colors.pinkAccent),
+                                    ),
+                                    onPressed: already || invited || _addingMembers ? null : () async {
+                                      await _addNpcToGroup(npc.id);
+                                      sheetSetState(() {});
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 200,
-                  child: _contacts.isEmpty
-                      ? const Center(child: Text('Nessun contatto', style: TextStyle(color: Colors.white70)))
-                      : ListView.builder(
-                          itemCount: _contacts.length,
-                          itemBuilder: (_, idx) {
-                            final c = _contacts[idx];
-                            final already = _memberIds.contains(c.id);
-                            final invited = _invitedIds.contains(c.id);
-                            final isNpc = c.type == 'npc';
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.grey[800],
-                                backgroundImage: c.avatar != null ? NetworkImage(c.avatar!) : null,
-                                child: c.avatar == null ? Icon(isNpc ? Icons.smart_toy : Icons.person, color: Colors.white) : null,
-                              ),
-                              title: Text(c.name, style: const TextStyle(color: Colors.white)),
-                              subtitle: Text(
-                                invited ? 'Invitato' : (isNpc ? 'Thriller' : 'Utente'),
-                                style: TextStyle(color: invited ? Colors.orangeAccent : Colors.grey[600]),
-                              ),
-                              trailing: IconButton(
-                                icon: Icon(
-                                  already ? Icons.check : (invited ? Icons.schedule : Icons.person_add_alt),
-                                  color: already ? Colors.greenAccent : (invited ? Colors.orangeAccent : Colors.pinkAccent),
-                                ),
-                                onPressed: already || invited || _addingMembers ? null : () => _addContactToGroup(c),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('I miei Thriller', style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 220,
-                  child: _availableNpcs.isEmpty
-                      ? const Center(child: Text('Nessun Thriller disponibile', style: TextStyle(color: Colors.white70)))
-                      : ListView.builder(
-                          itemCount: _availableNpcs.length,
-                          itemBuilder: (_, idx) {
-                            final npc = _availableNpcs[idx];
-                            final already = _memberIds.contains(npc.id);
-                            final invited = _invitedIds.contains(npc.id);
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.grey[800],
-                                backgroundImage: npc.avatarUrl != null ? NetworkImage(npc.avatarUrl!) : null,
-                                child: npc.avatarUrl == null ? const Icon(Icons.smart_toy, color: Colors.white) : null,
-                              ),
-                              title: Text(npc.name, style: const TextStyle(color: Colors.white)),
-                              subtitle: Text(
-                                invited ? 'Invitato' : npc.displayDescription,
-                                style: TextStyle(color: invited ? Colors.orangeAccent : Colors.grey[600]),
-                              ),
-                              trailing: IconButton(
-                                icon: Icon(
-                                  already ? Icons.check : (invited ? Icons.schedule : Icons.person_add_alt),
-                                  color: already ? Colors.greenAccent : (invited ? Colors.orangeAccent : Colors.pinkAccent),
-                                ),
-                                onPressed: already || invited || _addingMembers ? null : () => _addNpcToGroup(npc.id),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -1029,7 +1039,6 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                   ),
                 ],
               ),
-            ),
             ),
           ),
         ],
