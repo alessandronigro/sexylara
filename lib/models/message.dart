@@ -58,7 +58,6 @@ class Message {
   final String? senderId;
   final String? senderName;
   final String? avatarUrl;
-  final String? avatarUrl;
   final bool? isAi;
   final String? conversationId;
 

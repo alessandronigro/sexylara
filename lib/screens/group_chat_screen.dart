@@ -125,7 +125,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           return;
         }
 
-        final groupMessage = {
+        final enrichedGroupMessage = {
           'id': data['messageId'],
           'content': data['content'],
           'sender_id': senderId,
@@ -138,7 +138,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         };
         
         setState(() {
-          _messages.add(groupMessage);
+          _messages.add(enrichedGroupMessage);
         });
         _scrollToBottom();
         print('📨 Group message from ${data['sender_name']}: ${data['content']}');
@@ -640,9 +640,6 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       // Clear reply state
       _cancelReply();
     } catch (e) {
-      print('📤 Sending group message via WebSocket: $text');
-      _channel!.sink.add(message);
-    } catch (e) {
       print('Error sending message: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Errore invio messaggio: $e')),
@@ -902,20 +899,14 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                          if (content.startsWith('http')) {
                            imageUrl = content;
                            content = ''; // Clear content since it's just the URL
-                         } else {
-                           // Try to extract URL from content
-                           final urlRegExp = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
-                           final match = urlRegExp.firstMatch(content);
-                           if (match != null) {
-                             imageUrl = match.group(0);
-                             content = content.replaceFirst(imageUrl!, '').trim();
-                           }
-                         }
-                      } else {
-                         // Auto-detect image in text (for backward compatibility)
-                          if (match != null) {
-                            imageUrl = match.group(0);
-                            content = content.replaceFirst(imageUrl!, '').trim();
+                          } else {
+                            // Try to extract URL from content
+                            final urlRegExp = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
+                            final match = urlRegExp.firstMatch(content);
+                            if (match != null) {
+                              imageUrl = match.group(0);
+                              content = content.replaceFirst(imageUrl!, '').trim();
+                            }
                           }
                        }
                        
