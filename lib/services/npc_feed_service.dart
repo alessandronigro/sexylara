@@ -10,6 +10,8 @@ class NpcFeedService {
   static Future<Map<String, dynamic>> publishNpc({
     required String npcId,
     String? message,
+    String? mediaUrl,
+    String? mediaType,
   }) async {
     try {
       final response = await http.post(
@@ -18,6 +20,8 @@ class NpcFeedService {
         body: jsonEncode({
           'npcId': npcId,
           if (message != null) 'message': message,
+          if (mediaUrl != null) 'mediaUrl': mediaUrl,
+          if (mediaType != null) 'mediaType': mediaType,
         }),
       );
 

@@ -24,6 +24,9 @@ class UnifiedMessageBubble extends StatelessWidget {
   
   // For media
   final String? mediaUrl;
+  
+  // For replies
+  final ReplyPreview? replyTo;
 
   const UnifiedMessageBubble({
     super.key,
@@ -35,6 +38,7 @@ class UnifiedMessageBubble extends StatelessWidget {
     this.avatarUrl,
     this.onAvatarTap,
     this.mediaUrl,
+    this.replyTo,
   });
 
   @override
@@ -84,7 +88,51 @@ class UnifiedMessageBubble extends StatelessWidget {
                 Container(
                   padding: _getPadding(),
                   decoration: _getDecoration(),
-                  child: _buildContent(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Reply context
+                      if (replyTo != null)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border(
+                              left: BorderSide(
+                                color: isMe ? Colors.white : Colors.pinkAccent,
+                                width: 3,
+                              ),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                replyTo!.role == 'user' ? 'Tu' : 'Lara', // Simplification, could be improved with name
+                                style: TextStyle(
+                                  color: isMe ? Colors.white70 : Colors.pinkAccent.shade100,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                replyTo!.content,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isMe ? Colors.white60 : Colors.grey[300],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      _buildContent(context),
+                    ],
+                  ),
                 ),
 
                 // Timestamp

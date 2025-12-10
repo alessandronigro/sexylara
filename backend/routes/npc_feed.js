@@ -8,7 +8,7 @@ const { supabase } = require('../lib/supabase');
  * Body: { npcId: string, message?: string }
  */
 router.post('/publish-npc', async (req, res) => {
-    const { npcId, message } = req.body || {};
+    const { npcId, message, mediaUrl, mediaType } = req.body || {};
 
     if (!npcId) {
         return res.status(400).json({ error: 'npcId è obbligatorio' });
@@ -47,8 +47,8 @@ router.post('/publish-npc', async (req, res) => {
             .insert({
                 npc_id: npcId,
                 caption: postCaption,
-                media_url: npc.avatar_url || npc.profile_image_url,
-                media_type: 'image',
+                media_url: req.body.mediaUrl || npc.avatar_url || npc.profile_image_url,
+                media_type: req.body.mediaType || 'image',
                 created_at: new Date().toISOString()
             })
             .select()

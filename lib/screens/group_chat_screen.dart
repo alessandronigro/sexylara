@@ -15,6 +15,7 @@ import 'npc_feed_screen.dart';
 import 'npc_profile_screen.dart';
 import '../services/group_service.dart';
 import '../services/npc_service.dart';
+import '../services/npc_feed_service.dart'; // Added for feed publishing
 import '../models/npc.dart';
 
 class GroupChatScreen extends ConsumerStatefulWidget {
@@ -40,6 +41,10 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   List<Npc> _availableNpcs = [];
   List<ThrillerContact> _contacts = [];
   bool _addingMembers = false;
+  
+  // Reply State
+  Map<String, dynamic>? _replyingMessage;
+  final FocusNode _inputFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -109,6 +114,27 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           'type': 'text',
           'created_at': data['timestamp'] ?? DateTime.now().toIso8601String(),
           'is_ai': data['role'] == 'assistant', // AI if role is assistant, otherwise user
+        };
+        
+        setState(() {
+          _messages.add(groupMessage);
+        });
+        // Message Filtering: Ensure message belongs to this group
+        if (data['group_id'] != widget.groupId && data['groupId'] != widget.groupId) {
+          print('🔇 Ignoring message for another group: ${data['group_id']}');
+          return;
+        }
+
+        final groupMessage = {
+          'id': data['messageId'],
+          'content': data['content'],
+          'sender_id': senderId,
+          'sender_name': data['sender_name'],
+          'avatar': data['avatar'],
+          'type': 'text',
+          'created_at': data['timestamp'] ?? DateTime.now().toIso8601String(),
+          'is_ai': data['role'] == 'assistant', // AI if role is assistant, otherwise user
+          'reply_preview': data['reply_preview'],
         };
         
         setState(() {
@@ -580,6 +606,11 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       'sender_id': userId,
       'created_at': DateTime.now().toIso8601String(),
       'is_user': true,
+      if (_replyingMessage != null) 'reply_preview': {
+        'id': _replyingMessage!['id'],
+        'content': _replyingMessage!['content'],
+        'role': _replyingMessage!['is_ai'] == true ? 'assistant' : 'user',
+      },
     };
 
     setState(() {
@@ -590,12 +621,25 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
     try {
       // Send via WebSocket with group_id
       final traceId = const Uuid().v4();
-      final message = jsonEncode({
+      final messagePayload = {
         'text': text,
         'traceId': traceId,
-        'group_id': widget.groupId,  // ← This triggers group chat!
-      });
+        'group_id': widget.groupId,
+        if (_replyingMessage != null) 'reply_preview': {
+          'id': _replyingMessage!['id'],
+          'content': _replyingMessage!['content'],
+          'role': _replyingMessage!['is_ai'] == true ? 'assistant' : 'user',
+        }
+      };
+      
+      final message = jsonEncode(messagePayload);
 
+      print('📤 Sending group message via WebSocket: $text');
+      _channel!.sink.add(message);
+      
+      // Clear reply state
+      _cancelReply();
+    } catch (e) {
       print('📤 Sending group message via WebSocket: $text');
       _channel!.sink.add(message);
     } catch (e) {
@@ -604,6 +648,151 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         SnackBar(content: Text('Errore invio messaggio: $e')),
       );
     }
+  }
+
+  Future<void> _publishToFeed(Map<String, dynamic> message) async {
+    final senderId = message['sender_id'];
+    // Validazione: deve essere un NPC (o almeno proviamo a pubblicare come se lo fosse)
+    // Se fallisce, il servizio/backend restituirà errore.
+    // In un gruppo, sender_id dovrebbe essere l'ID dell'NPC se è_ai=true.
+    
+    String? mediaUrl;
+    String content = message['content'] ?? '';
+    
+    // Extract image URL
+    if (content.startsWith('http')) {
+       mediaUrl = content;
+    } else {
+       final urlRegExp = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
+       final match = urlRegExp.firstMatch(content);
+       if (match != null) {
+         mediaUrl = match.group(0);
+       }
+    }
+    
+    if (mediaUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessuna immagine trovata')),
+      );
+      return;
+    }
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pubblicazione in corso...')),
+      );
+      
+      await NpcFeedService.publishNpc(
+        npcId: senderId,
+        message: 'Foto dal gruppo ${_groupName}',
+        mediaUrl: mediaUrl,
+        mediaType: 'image',
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Foto pubblicata nel feed! 📸')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore (forse l\'autore non è un NPC?): $e')),
+        );
+      }
+    }
+  }
+
+  void _showPublishConfirmation(Map<String, dynamic> message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Pubblica foto', style: TextStyle(color: Colors.white)),
+        content: const Text('Vuoi pubblicare questa foto nella bacheca pubblica?', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _publishToFeed(message);
+            },
+            child: const Text('Pubblica', style: TextStyle(color: Colors.pinkAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMessageOptions(Map<String, dynamic> message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF141414),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.reply, color: Colors.pinkAccent),
+                  title: const Text('Rispondi', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _replyingMessage = message;
+                    });
+                    FocusScope.of(context).requestFocus(_inputFocusNode);
+                  },
+                ),
+                if (message['is_ai'] != true && (message['sender_id'] == SupabaseService.currentUser?.id || message['is_user'] == true))
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    title: const Text('Elimina messaggio', style: TextStyle(color: Colors.white)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      // TODO: Implement delete API call when available
+                      // For now just remove locally if it's a temp message
+                      if (message['id'].toString().startsWith('temp-')) {
+                         setState(() {
+                           _messages.removeWhere((m) => m['id'] == message['id']);
+                         });
+                      } else {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           const SnackBar(content: Text('Eliminazione non ancora disponibile per messaggi inviati')),
+                         );
+                      }
+                    },
+                  ),
+                if (message['is_ai'] == true && (message['icon'] != null || (message['type'] == 'image' || message['is_image'] == true || message['content'].toString().startsWith('http'))))
+                  ListTile(
+                    leading: const Icon(Icons.public, color: Colors.blueAccent),
+                    title: const Text('Pubblica nel Feed', style: TextStyle(color: Colors.white)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showPublishConfirmation(message);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _cancelReply() {
+    setState(() {
+      _replyingMessage = null;
+    });
   }
 
   @override
@@ -724,32 +913,42 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                          }
                       } else {
                          // Auto-detect image in text (for backward compatibility)
-                         final urlRegExp = RegExp(r'(https?://[^\s]+\.(?:png|jpg|jpeg|gif|webp))', caseSensitive: false);
-                         final match = urlRegExp.firstMatch(content);
                           if (match != null) {
                             imageUrl = match.group(0);
                             content = content.replaceFirst(imageUrl!, '').trim();
                           }
                        }
+                       
+                       // Parse reply preview if existing
+                       ReplyPreview? replyPreview;
+                       if (msg['reply_preview'] != null) {
+                         try {
+                           replyPreview = ReplyPreview.fromJson(msg['reply_preview']);
+                         } catch (_) {}
+                       }
 
-                       return UnifiedMessageBubble(
-                         content: content,
-                         type: imageUrl != null ? MessageType.image : MessageType.text,
-                         mediaUrl: imageUrl,
-                         senderName: !isMe ? (msg['sender_name'] ?? 'AI') : null,
-                         avatarUrl: !isMe ? msg['avatar'] : null,
-                         isMe: isMe,
-                         timestamp: msg['created_at'] != null
-                             ? DateTime.tryParse(msg['created_at'])
-                             : null,
-                         onAvatarTap: !isMe
-                             ? () => _navigateToProfile(
-                                   msg['sender_id'],
-                                   msg['sender_name'] ?? 'Utente',
-                                   msg['avatar'],
-                                   isAi,
-                                 )
-                             : null,
+                       return GestureDetector(
+                         onLongPress: () => _showMessageOptions(msg),
+                         child: UnifiedMessageBubble(
+                           content: content,
+                           type: imageUrl != null ? MessageType.image : MessageType.text,
+                           mediaUrl: imageUrl,
+                           senderName: !isMe ? (msg['sender_name'] ?? 'AI') : null,
+                           avatarUrl: !isMe ? msg['avatar'] : null,
+                           isMe: isMe,
+                           timestamp: msg['created_at'] != null
+                               ? DateTime.tryParse(msg['created_at'])
+                               : null,
+                           replyTo: replyPreview,
+                           onAvatarTap: !isMe
+                               ? () => _navigateToProfile(
+                                     msg['sender_id'],
+                                     msg['sender_name'] ?? 'Utente',
+                                     msg['avatar'],
+                                     isAi,
+                                   )
+                               : null,
+                         ),
                        );
                     },
                   ),
@@ -762,42 +961,84 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 color: Color(0xFF1A1A1A),
                 border: Border(top: BorderSide(color: Colors.grey, width: 0.2)),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      style: const TextStyle(color: Colors.white),
-                      textCapitalization: TextCapitalization.sentences,
-                      autocorrect: true,
-                      enableSuggestions: true,
-                      minLines: 1,
-                      maxLines: 5,
-                      keyboardType: TextInputType.multiline,
-                      decoration: InputDecoration(
-                        hintText: 'Scrivi un messaggio...',
-                        hintStyle: TextStyle(color: Colors.grey[600]),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[900],
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                   if (_replyingMessage != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border(left: BorderSide(color: Colors.pinkAccent, width: 3)),
                       ),
-                      // onSubmitted removed for multiline support
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _replyingMessage!['sender_name'] ?? 'Utente',
+                                  style: const TextStyle(color: Colors.pinkAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _replyingMessage!['content'] ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 16, color: Colors.white54),
+                            onPressed: _cancelReply,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    backgroundColor: Colors.pinkAccent,
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: _sendMessage,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          focusNode: _inputFocusNode,
+                          style: const TextStyle(color: Colors.white),
+                          textCapitalization: TextCapitalization.sentences,
+                          autocorrect: true,
+                          enableSuggestions: true,
+                          minLines: 1,
+                          maxLines: 5,
+                          keyboardType: TextInputType.multiline,
+                          decoration: InputDecoration(
+                            hintText: 'Scrivi un messaggio...',
+                            hintStyle: TextStyle(color: Colors.grey[600]),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[900],
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          ),
+                          // onSubmitted removed for multiline support
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      CircleAvatar(
+                        backgroundColor: Colors.pinkAccent,
+                        child: IconButton(
+                          icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                          onPressed: _sendMessage,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+            ),
             ),
           ),
         ],

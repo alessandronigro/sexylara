@@ -58,7 +58,9 @@ class Message {
   final String? senderId;
   final String? senderName;
   final String? avatarUrl;
+  final String? avatarUrl;
   final bool? isAi;
+  final String? conversationId;
 
   Message({
     required this.id,
@@ -73,6 +75,7 @@ class Message {
     this.senderName,
     this.avatarUrl,
     this.isAi,
+    this.conversationId,
   });
 
   // Helper getters
@@ -143,6 +146,10 @@ class Message {
       avatarUrl: json['avatar']?.toString() ??
           json['avatar_url']?.toString(),
       isAi: json['is_ai'] as bool?,
+      conversationId: json['npc_id']?.toString() ??
+          json['npcId']?.toString() ??
+          json['group_id']?.toString() ??
+          json['groupId']?.toString(),
     );
   }
 
@@ -158,6 +165,7 @@ class Message {
         if (senderName != null) 'sender_name': senderName,
         if (avatarUrl != null) 'avatar': avatarUrl,
         if (isAi != null) 'is_ai': isAi,
+        if (conversationId != null) 'conversationId': conversationId,
       };
 
   Message copyWith({
@@ -173,6 +181,7 @@ class Message {
     String? senderName,
     String? avatarUrl,
     bool? isAi,
+    String? conversationId,
   }) {
     return Message(
       id: id ?? this.id,
@@ -187,6 +196,7 @@ class Message {
       senderName: senderName ?? this.senderName,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       isAi: isAi ?? this.isAi,
+      conversationId: conversationId ?? this.conversationId,
     );
   }
 

@@ -25,6 +25,7 @@ import '../widgets/npc_avatar.dart';
 import '../widgets/recording_button.dart';
 import '../services/audio_recorder_service.dart';
 import '../widgets/pending_media_bubble.dart';
+import '../services/npc_feed_service.dart'; // Added import for feed service
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String npcId;
@@ -326,11 +327,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         }
                       : null,
                 ),
+                if (message.type == MessageType.image)
+                  ListTile(
+                    leading: const Icon(Icons.public, color: Colors.blueAccent),
+                    title: const Text('Pubblica nel Feed', style: TextStyle(color: Colors.white)),
+                    onTap: () {
+                      Navigator.pop(buildContext);
+                      _showPublishConfirmation(message);
+                    },
+                  ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  void _showPublishConfirmation(Message message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Pubblica foto', style: TextStyle(color: Colors.white)),
+        content: const Text('Vuoi pubblicare questa foto nella bacheca pubblica?', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _publishToFeed(message);
+            },
+            child: const Text('Pubblica', style: TextStyle(color: Colors.pinkAccent)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -373,6 +407,68 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Errore eliminazione: $error')),
+        );
+      }
+    }
+    }
+  }
+
+  Future<void> _publishToFeed(Message message) async {
+    // Determine the media URL - support both content URL and mediaUrl field if we had one
+    // In chat_screen, imageUrl is usually in content if type is image
+    String? mediaUrl;
+    if (message.type == MessageType.image) {
+       // Similar extraction logic as in build method
+       if (message.content.startsWith('http')) {
+         mediaUrl = message.content;
+       } else {
+         final urlRegExp = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
+         final match = urlRegExp.firstMatch(message.content);
+         if (match != null) {
+           mediaUrl = match.group(0);
+         }
+       }
+    }
+    
+    if (mediaUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nessuna immagine da pubblicare')),
+      );
+      return;
+    }
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pubblicazione in corso...')),
+      );
+      
+      // Use the sender ID as NPC ID. If it's the user publishing their own photo, 
+      // we might want to handle that, but typically this is for publishing NPC photos.
+      // If the message is from the user, maybe we shouldn't allow it?
+      // The user asked "publish photos... to feed". 
+      // If I publish a photo I sent, it should probably appear as "User's photo".
+      // But the endpoint is publish-npc. 
+      // Let's assume we publish it associated with the current NPC conversation if it's 1-to-1,
+      // OR if it's the user's photo, we might need to adjust the backend to support user posts.
+      // For now, let's use the message sender ID if it's an NPC, or the current chat NPC ID?
+      // Actually, if it's a 1-to-1 chat with an NPC, we should probably publish it to THAT NPC's feed.
+      
+      await NpcFeedService.publishNpc(
+        npcId: widget.npcId, // Associate with this NPC context
+        message: 'Foto dalla chat',
+        mediaUrl: mediaUrl,
+        mediaType: 'image',
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Foto pubblicata nel feed! 📸')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore pubblicazione: $e')),
         );
       }
     }
@@ -901,6 +997,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       mediaUrl: msg.type != MessageType.text ? msg.content : null,
                       avatarUrl: bubbleAvatar,
                       senderName: senderName,
+                      replyTo: msg.replyTo,
                     ),
                   );
                 },

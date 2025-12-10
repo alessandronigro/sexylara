@@ -1,5 +1,5 @@
 require('dotenv').config();
-require('./utils/autoInstrument');
+
 const express = require("express");
 const Replicate = require("replicate");
 const cors = require("cors");
