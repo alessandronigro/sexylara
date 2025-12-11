@@ -635,6 +635,40 @@ router.get('/group/invites/pending', async (req, res) => {
 });
 
 // ===============================================================
+// GET /api/groups/:groupId/invites
+// Ottiene gli inviti pendenti (outgoing) per un gruppo specifico
+// ===============================================================
+router.get('/groups/:groupId/invites', async (req, res) => {
+  const { groupId } = req.params;
+  const userId = req.headers['x-user-id'];
+
+  if (!userId) {
+    return res.status(401).json({ error: 'User not authenticated' });
+  }
+
+  try {
+    // Check permissions (member or owner)
+    const hasPermission = await checkPermission(userId, groupId, 'view_group');
+    if (!hasPermission) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { data: invites, error } = await supabase
+      .from('group_invites')
+      .select('invited_id')
+      .eq('group_id', groupId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+
+    res.json({ invites: invites || [] });
+  } catch (error) {
+    console.error('Error fetching group outgoing invites:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===============================================================
 // HELPER FUNCTION: Accetta un invito
 // ===============================================================
 async function acceptInvite(inviteId, userId = null) {

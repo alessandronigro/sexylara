@@ -12,6 +12,7 @@ class NpcPost {
   final String? npcName;
   final String? npcAvatarUrl;
   final String? npcGender;
+  final String? groupId;
 
   NpcPost({
     required this.id,
@@ -25,6 +26,7 @@ class NpcPost {
     this.npcName,
     this.npcAvatarUrl,
     this.npcGender,
+    this.groupId,
   });
 
   factory NpcPost.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,7 @@ class NpcPost {
       npcName: npc?['name'],
       npcAvatarUrl: npc?['avatar_url'],
       npcGender: npc?['gender'],
+      groupId: json['group_id'],
     );
   }
 }

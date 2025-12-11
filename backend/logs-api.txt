@@ -29,3 +29,166 @@
 [2025-12-10T17:12:28.267Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: eac9979a-1757-4747-88da-b43c766f8610
 [2025-12-10T17:12:34.667Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: 88ced72a-cdc4-44ad-8b75-842e76387427 npcId: c124b86d-cd1a-4366-88ac-7b2cc96d30dd
 [2025-12-10T17:12:34.782Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-11T06:05:46.188Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-11T08:18:56.488Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-11T08:38:58.892Z] [INFO] ⚠️ User 5b3b2009-fc62-4930-a304-580662d8d2f1 not connected or connection not ready
+[2025-12-11T08:39:00.516Z] [INFO] ⚠️ User 695308a8-c33b-4ef1-aa6d-3c91603650cc not connected or connection not ready
+[2025-12-11T08:39:02.242Z] [INFO] ⚠️ User 4060bdff-7003-453a-95ca-4bd916fd2bb6 not connected or connection not ready
+[2025-12-11T08:39:05.069Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: 5b3b2009-fc62-4930-a304-580662d8d2f1
+[2025-12-11T08:40:00.059Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: 88ced72a-cdc4-44ad-8b75-842e76387427
+[2025-12-11T08:40:02.935Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: 88ced72a-cdc4-44ad-8b75-842e76387427
+[2025-12-11T08:40:34.231Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=eac9979a-1757-4747-88da-b43c766f8610, groupId=61f1427b-d9e0-4a69-ac6e-4b68369f1f88, action=invite_user
+[2025-12-11T08:40:34.231Z] [INFO] [Permission Check] userId=eac9979a-1757-4747-88da-b43c766f8610, groupId=61f1427b-d9e0-4a69-ac6e-4b68369f1f88, action=invite_user
+[2025-12-11T08:40:34.324Z] [INFO] [Permission Check] Group data: {
+  groupUserId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  requestUserId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-11T08:40:34.325Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-11T08:40:34.325Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-11T08:40:34.325Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-11T08:40:34.802Z] [INFO] ⚠️ User 5b3b2009-fc62-4930-a304-580662d8d2f1 not connected or connection not ready
+[2025-12-11T08:40:37.931Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=eac9979a-1757-4747-88da-b43c766f8610, groupId=61f1427b-d9e0-4a69-ac6e-4b68369f1f88, action=invite_user
+[2025-12-11T08:40:37.931Z] [INFO] [Permission Check] userId=eac9979a-1757-4747-88da-b43c766f8610, groupId=61f1427b-d9e0-4a69-ac6e-4b68369f1f88, action=invite_user
+[2025-12-11T08:40:38.005Z] [INFO] [Permission Check] Group data: {
+  groupUserId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  requestUserId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-11T08:40:38.005Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-11T08:40:38.005Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-11T08:40:38.005Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-11T08:40:38.388Z] [INFO] ⚠️ User 695308a8-c33b-4ef1-aa6d-3c91603650cc not connected or connection not ready
+[2025-12-11T08:41:12.795Z] [INFO] ⚙️ ensureUserProfileExists called for userId: eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:13.199Z] [INFO] 🔔 Notifica: like aggiunto a post 3dddcaa0-701a-492f-bb2c-085ea6fcde5a da utente eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:13.750Z] [INFO] ⚙️ ensureUserProfileExists called for userId: eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:14.281Z] [INFO] ⚙️ ensureUserProfileExists called for userId: eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:14.297Z] [INFO] 🔔 Notifica: like rimosso da post 3dddcaa0-701a-492f-bb2c-085ea6fcde5a da utente eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:14.586Z] [INFO] 🔔 Notifica: like aggiunto a post 3dddcaa0-701a-492f-bb2c-085ea6fcde5a da utente eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:17.531Z] [INFO] ⚙️ ensureUserProfileExists called for userId: eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:17.942Z] [INFO] 🔔 Notifica: like aggiunto a post 4039c2fc-29fc-4729-ae71-a1cc47ba1bfc da utente eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:21.350Z] [INFO] ⚙️ ensureUserProfileExists called for userId: eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:21.704Z] [INFO] 🔔 Notifica: like aggiunto a post dee6e2c8-4269-47d1-8de7-b8ba6621ada5 da utente eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:23.179Z] [INFO] ⚙️ ensureUserProfileExists called for userId: eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:41:23.482Z] [INFO] 🔔 Notifica: like aggiunto a post 18a99ed9-af9a-442a-a889-1e0127d8bd9c da utente eac9979a-1757-4747-88da-b43c766f8610
+[2025-12-11T08:47:55.124Z] [INFO] 📦 API server in ascolto su http://localhost:4000
+[2025-12-11T08:54:18.958Z] [INFO] [API] /api/npcs/generate called {
+  userId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  seedKeys: [
+    'gender',
+    'ageRange',
+    'name',
+    'archetype',
+    'vibe',
+    'sensuality',
+    'language',
+    'hints'
+  ]
+}
+[2025-12-11T08:54:27.729Z] [INFO] [NPC Generate] LLM raw length: 2262
+[2025-12-11T08:54:27.730Z] [INFO] [API] LifeCore validation { npcId: 'e7ba3ad1-2975-42ab-9307-404f896b5f13', ok: true, errors: [] }
+[2025-12-11T08:54:27.730Z] [INFO] [API] SystemPrompt length { npcId: 'e7ba3ad1-2975-42ab-9307-404f896b5f13', promptSize: 3632 }
+[2025-12-11T08:54:27.731Z] [INFO] [API] Avatar URL not valid, ignoring value: realistic
+[2025-12-11T08:54:27.882Z] [INFO] [NPC Generate] Saved npc row {
+  npcId: 'e7ba3ad1-2975-42ab-9307-404f896b5f13',
+  name: 'Carina',
+  avatarUrl: null,
+  tone: 'explicit',
+  archetype: 'playful'
+}
+[2025-12-11T08:54:37.258Z] [INFO] Generated avatar: https://replicate.delivery/xezq/Oa562K3sae07N6c9Lg0Y2BnnM7fcxvxdooaouKmnh4HMjDyVA/tmpbvc69ixf.jpg
+[2025-12-11T08:54:38.480Z] [INFO] [NPC Generate] Avatar generated via Replicate {
+  npcId: 'e7ba3ad1-2975-42ab-9307-404f896b5f13',
+  promptAvatar: 'Slim build, long black hair, striking green eyes, and stands at 176 cm tall.'
+}
+[2025-12-11T08:54:38.578Z] [INFO] 🎤 Generating voice master for Carina with params: {
+  text: 'Questo è il campione vocale iniziale di Carina.',
+  pitch: 2,
+  speed: 1,
+  volume: 1,
+  bitrate: 128000,
+  channel: 'mono',
+  emotion: 'neutral',
+  voice_id: 'Friendly_Person',
+  sample_rate: 32000,
+  audio_format: 'mp3',
+  language_boost: 'Italian',
+  subtitle_enable: false,
+  english_normalization: false
+}
+[2025-12-11T08:54:41.228Z] [INFO] ✅ Voice master uploaded to Supabase: https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/voice-masters/voice_master_Carina_1765443280972.mp3
+[2025-12-11T08:54:41.351Z] [INFO] ✅ NPC voice_master_url saved: https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/voice-masters/voice_master_Carina_1765443280972.mp3
+[2025-12-11T08:54:41.523Z] [INFO] [NPC Generate] Completed response {
+  npcId: 'e7ba3ad1-2975-42ab-9307-404f896b5f13',
+  avatarUrl: 'https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/avatars/npc_e7ba3ad1-2975-42ab-9307-404f896b5f13_1765443277890.png',
+  promptSize: 3632
+}
+[2025-12-11T08:54:41.518Z] [INFO] [NPC Generate] Upserted npc_profiles with npc_json + prompt_system {
+  npcId: 'e7ba3ad1-2975-42ab-9307-404f896b5f13',
+  hasLifeCore: true,
+  hasPrompt: true
+}
+[2025-12-11T08:54:41.573Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: e7ba3ad1-2975-42ab-9307-404f896b5f13
+[2025-12-11T08:54:41.646Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-11T08:55:10.510Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: e7ba3ad1-2975-42ab-9307-404f896b5f13
+[2025-12-11T08:55:10.725Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-11T08:55:13.619Z] [INFO] 🔎 Attempting to fetch NPC with id: e7ba3ad1-2975-42ab-9307-404f896b5f13
+[2025-12-11T08:55:13.715Z] [INFO] Supabase fetch result: {
+  npc: {
+    id: 'e7ba3ad1-2975-42ab-9307-404f896b5f13',
+    user_id: 'eac9979a-1757-4747-88da-b43c766f8610',
+    name: 'Carina',
+    avatar_url: 'https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/avatars/npc_e7ba3ad1-2975-42ab-9307-404f896b5f13_1765443277890.png',
+    ethnicity: 'latina',
+    body_type: null,
+    hair_length: null,
+    hair_color: null,
+    eye_color: null,
+    height_cm: null,
+    age: 25,
+    personality_type: 'playful',
+    tone: 'explicit',
+    characteristics: {},
+    is_active: true,
+    created_at: '2025-12-11T08:54:27.954092+00:00',
+    updated_at: '2025-12-11T08:54:41.425349+00:00',
+    voice_preview_url: null,
+    gender: 'female',
+    group_behavior_profile: {
+      groupRole: 'observer',
+      talkFrequency: 0.25,
+      interruptStyle: 'polite'
+    },
+    current_mood: 'neutral',
+    last_interaction_at: '2025-12-11T08:54:27.954092+00:00',
+    xp: 0,
+    level: 1,
+    voice_master_url: 'https://tnxdohjldclgbyadgdnt.supabase.co/storage/v1/object/public/voice-masters/voice_master_Carina_1765443280972.mp3',
+    voice_engine: null,
+    voice_profile: null,
+    is_public: false
+  },
+  npcError: null
+}
+[2025-12-11T08:55:13.810Z] [INFO] ✅ NPC Carina pubblicato nella bacheca: post 65f90b71-a185-429d-b706-d6301c05ce29
+[2025-12-11T08:55:13.810Z] [INFO] 🔔 Notifica: nuovo post creato per NPC ${npcId}
+[2025-12-11T08:55:24.551Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: e7ba3ad1-2975-42ab-9307-404f896b5f13
+[2025-12-11T08:55:24.673Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-11T08:55:24.882Z] [INFO] 🔍 GET /api/npcs/:id/public - userId: eac9979a-1757-4747-88da-b43c766f8610 npcId: e7ba3ad1-2975-42ab-9307-404f896b5f13
+[2025-12-11T08:55:24.948Z] [INFO] 🔐 Access check - isOwner: true isPublic: false allowed: true
+[2025-12-11T09:00:28.021Z] [INFO] [POST /api/group/invite/user] Checking permission for userId=eac9979a-1757-4747-88da-b43c766f8610, groupId=61f1427b-d9e0-4a69-ac6e-4b68369f1f88, action=invite_user
+[2025-12-11T09:00:28.021Z] [INFO] [Permission Check] userId=eac9979a-1757-4747-88da-b43c766f8610, groupId=61f1427b-d9e0-4a69-ac6e-4b68369f1f88, action=invite_user
+[2025-12-11T09:00:28.088Z] [INFO] [Permission Check] Group data: {
+  groupUserId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  requestUserId: 'eac9979a-1757-4747-88da-b43c766f8610',
+  groupUserIdType: 'string',
+  requestUserIdType: 'string',
+  allowMemberInvite: false
+}
+[2025-12-11T09:00:28.088Z] [INFO] [Permission Check] Result: true (owner bypass)
+[2025-12-11T09:00:28.088Z] [INFO] [Permission Check] User is group owner: true
+[2025-12-11T09:00:28.088Z] [INFO] [POST /api/group/invite/user] Permission check result: true

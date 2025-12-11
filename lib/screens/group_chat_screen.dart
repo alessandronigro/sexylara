@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -40,10 +41,12 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   final Set<String> _invitedIds = {}; // Track invited but not yet accepted members
   List<Npc> _availableNpcs = [];
   List<ThrillerContact> _contacts = [];
+
   bool _addingMembers = false;
-  
+  String? _ownerId; // Store group owner ID
   // Reply State
   Map<String, dynamic>? _replyingMessage;
+  final Map<String, Map<String, dynamic>> _pendingMedia = {}; // tempId -> data
   final FocusNode _inputFocusNode = FocusNode();
 
   @override
@@ -137,8 +140,28 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           _currentStatus = '${data['memberCount']} membri stanno pensando...';
         });
       } else if (data['event'] == 'media_generation_started') {
-        // Optional: show specific status for media generation if not covered by npc_status
+        // Show pending media bubble
+        final mediaType = data['mediaType']?.toString() ?? 'image';
+        final tempId = data['tempId']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString();
+        final npcId = data['npcId'];
+        
+        setState(() {
+          _pendingMedia[tempId] = {
+            'id': tempId,
+            'npcId': npcId,
+            'type': mediaType,
+            'status': 'generating',
+          };
+        });
+        _scrollToBottom();
       } else if (data['event'] == 'media_generation_completed') {
+        final tempId = data['tempId']?.toString();
+        if (tempId != null) {
+          setState(() {
+            _pendingMedia.remove(tempId);
+          });
+        }
+        
         final npcId = data['npcId'];
         final member = _members.firstWhere(
            (m) => (m['npc_id'] == npcId || m['member_id'] == npcId),
@@ -162,6 +185,12 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         });
         _scrollToBottom();
       } else if (data['event'] == 'media_generation_failed') {
+        final tempId = data['tempId']?.toString();
+        if (tempId != null) {
+          setState(() {
+            _pendingMedia.remove(tempId);
+          });
+        }
         setState(() {
           _currentStatus = ''; // Clear status on failure
         });
@@ -203,20 +232,42 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
     try {
       final userId = SupabaseService.currentUser?.id;
       if (userId == null) return;
-      // Fetch group name and members
+      
+      // 1. Fetch group members
       final resp = await http.get(
         Uri.parse('${Config.apiBaseUrl}/api/groups/${widget.groupId}/members'),
         headers: {'x-user-id': userId},
       );
+      
+      // 2. Fetch pending invites
+      final invitesResp = await http.get(
+        Uri.parse('${Config.apiBaseUrl}/api/groups/${widget.groupId}/invites'),
+        headers: {'x-user-id': userId},
+      );
+
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
+        
+        List<String> pendingIds = [];
+        if (invitesResp.statusCode == 200) {
+          final invitesData = jsonDecode(invitesResp.body);
+          if (invitesData['invites'] != null) {
+            pendingIds = List<String>.from(invitesData['invites'].map((i) => i['invited_id'].toString()));
+          }
+        }
+
         if (mounted) {
           setState(() {
             _groupName = data['group']?['name'] ?? 'Gruppo';
+            _ownerId = data['group']?['user_id'];
             _members = data['members'] ?? [];
             _memberIds
               ..clear()
               ..addAll(_members.map((m) => (m['id'] ?? m['npc_id'] ?? m['member_id'])?.toString() ?? '').where((e) => e.isNotEmpty));
+            
+            _invitedIds
+              ..clear()
+              ..addAll(pendingIds);
           });
         }
       }
@@ -324,7 +375,22 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                               ? Icon(isNpc ? Icons.smart_toy : Icons.person, color: Colors.white)
                               : null,
                         ),
-                        title: Text(name, style: const TextStyle(color: Colors.white)),
+                        title: Row(
+                          children: [
+                            Text(name, style: const TextStyle(color: Colors.white)),
+                            if (id == _ownerId)
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.pinkAccent.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.pinkAccent, width: 0.5),
+                                ),
+                                child: const Text('Admin', style: TextStyle(color: Colors.pinkAccent, fontSize: 10)),
+                              ),
+                          ],
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete, color: Colors.redAccent),
                           onPressed: () {
@@ -591,6 +657,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
     }
 
     _textController.clear();
+    _inputFocusNode.requestFocus();
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) return;
 
@@ -676,6 +743,12 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
       );
       
       await NpcFeedService.publishNpc(
+        npcId: senderId,
+        message: content.replaceAll(mediaUrl!, '').trim(),
+        mediaUrl: mediaUrl,
+        mediaType: 'image',
+        groupId: widget.groupId,
+      );
         npcId: senderId,
         message: 'Foto dal gruppo ${_groupName}',
         mediaUrl: mediaUrl,
@@ -872,71 +945,112 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _messages.length + (_currentStatus.isNotEmpty ? 1 : 0),
+                    itemCount: _messages.length + _pendingMedia.length + (_currentStatus.isNotEmpty ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index == _messages.length) {
-                        if (_currentStatus.isNotEmpty) {
-                          return const TypingIndicator();
-                        }
-                        return const SizedBox.shrink();
-                      }
-                      final msg = _messages[index];
-                      final userId = SupabaseService.currentUser?.id;
-                      final isMe = msg['sender_id'] == userId || msg['is_user'] == true;
-                      
-                      final isAi = msg['is_ai'] == true;
+                      // Render messages first
+                      if (index < _messages.length) {
+                        final msg = _messages[index];
+                        final userId = SupabaseService.currentUser?.id;
+                        final isMe = msg['sender_id'] == userId || msg['is_user'] == true;
+                        
+                        final isAi = msg['is_ai'] == true;
 
-                      String content = msg['content'] ?? '';
-                      String? imageUrl;
-                      
-                      // Check for explicit image type or parse URL
-                      if (msg['type'] == 'image' || msg['is_image'] == true) {
-                         // If explicit type, content is likely the image URL
-                         if (content.startsWith('http')) {
-                           imageUrl = content;
-                           content = ''; // Clear content since it's just the URL
-                          } else {
-                            // Try to extract URL from content
-                            final urlRegExp = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
-                            final match = urlRegExp.firstMatch(content);
-                            if (match != null) {
-                              imageUrl = match.group(0);
-                              content = content.replaceFirst(imageUrl!, '').trim();
+                        String content = msg['content'] ?? '';
+                        String? imageUrl;
+                        
+                        // Check for explicit image type or parse URL
+                        if (msg['type'] == 'image' || msg['is_image'] == true) {
+                           // If explicit type, content is likely the image URL
+                           if (content.startsWith('http')) {
+                             imageUrl = content;
+                             content = ''; // Clear content since it's just the URL
+                            } else {
+                              // Try to extract URL from content
+                              final urlRegExp = RegExp(r'(https?://[^\s]+)', caseSensitive: false);
+                              final match = urlRegExp.firstMatch(content);
+                              if (match != null) {
+                                imageUrl = match.group(0);
+                                content = content.replaceFirst(imageUrl!, '').trim();
+                              }
                             }
-                          }
-                       }
-                       
-                       // Parse reply preview if existing
-                       ReplyPreview? replyPreview;
-                       if (msg['reply_preview'] != null) {
-                         try {
-                           replyPreview = ReplyPreview.fromJson(msg['reply_preview']);
-                         } catch (_) {}
-                       }
+                         }
+                         
+                         // Parse reply preview if existing
+                         ReplyPreview? replyPreview;
+                         if (msg['reply_preview'] != null) {
+                           try {
+                             replyPreview = ReplyPreview.fromJson(msg['reply_preview']);
+                           } catch (_) {}
+                         }
 
-                       return GestureDetector(
-                         onLongPress: () => _showMessageOptions(msg),
-                         child: UnifiedMessageBubble(
-                           content: content,
-                           type: imageUrl != null ? MessageType.image : MessageType.text,
-                           mediaUrl: imageUrl,
-                           senderName: !isMe ? (msg['sender_name'] ?? 'AI') : null,
-                           avatarUrl: !isMe ? msg['avatar'] : null,
-                           isMe: isMe,
-                           timestamp: msg['created_at'] != null
-                               ? DateTime.tryParse(msg['created_at'])
-                               : null,
-                           replyTo: replyPreview,
-                           onAvatarTap: !isMe
-                               ? () => _navigateToProfile(
-                                     msg['sender_id'],
-                                     msg['sender_name'] ?? 'Utente',
-                                     msg['avatar'],
-                                     isAi,
-                                   )
-                               : null,
-                         ),
-                       );
+                         return GestureDetector(
+                           onLongPress: () => _showMessageOptions(msg),
+                           child: UnifiedMessageBubble(
+                             content: content,
+                             type: imageUrl != null ? MessageType.image : MessageType.text,
+                             mediaUrl: imageUrl,
+                             senderName: !isMe ? (msg['sender_name'] ?? 'AI') : null,
+                             avatarUrl: !isMe ? msg['avatar'] : null,
+                             isMe: isMe,
+                             timestamp: msg['created_at'] != null
+                                 ? DateTime.tryParse(msg['created_at'])
+                                 : null,
+                             replyTo: replyPreview,
+                             onAvatarTap: !isMe
+                                 ? () => _navigateToProfile(
+                                       msg['sender_id'],
+                                       msg['sender_name'] ?? 'Utente',
+                                       msg['avatar'],
+                                       isAi,
+                                     )
+                                 : null,
+                           ),
+                         );
+                      }
+                      
+                      // Render pending media
+                      if (index < _messages.length + _pendingMedia.length) {
+                        final pendingIndex = index - _messages.length;
+                        final mediaData = _pendingMedia.values.elementAt(pendingIndex);
+                        
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2A2A2A),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.pinkAccent.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.pinkAccent,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      mediaData['type'] == 'image' ? 'Generazione immagine...' : 'Generazione media...',
+                                      style: const TextStyle(color: Colors.pinkAccent, fontStyle: FontStyle.italic),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      
+                      // Render typing indicator last
+                      return const TypingIndicator();
                     },
                   ),
           ),
@@ -989,28 +1103,37 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _textController,
-                          focusNode: _inputFocusNode,
-                          style: const TextStyle(color: Colors.white),
-                          textCapitalization: TextCapitalization.sentences,
-                          autocorrect: true,
-                          enableSuggestions: true,
-                          minLines: 1,
-                          maxLines: 5,
-                          keyboardType: TextInputType.multiline,
-                          decoration: InputDecoration(
-                            hintText: 'Scrivi un messaggio...',
-                            hintStyle: TextStyle(color: Colors.grey[600]),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
+                        child: RawKeyboardListener(
+                          focusNode: FocusNode(), // Dummy focus node for listener
+                          onKey: (event) {
+                            if (event is RawKeyDownEvent) {
+                              if (event.logicalKey == LogicalKeyboardKey.enter && !event.isShiftPressed) {
+                                _sendMessage();
+                              }
+                            }
+                          },
+                          child: TextField(
+                            controller: _textController,
+                            focusNode: _inputFocusNode,
+                            style: const TextStyle(color: Colors.white),
+                            textCapitalization: TextCapitalization.sentences,
+                            autocorrect: true,
+                            enableSuggestions: true,
+                            minLines: 1,
+                            maxLines: 5,
+                            keyboardType: TextInputType.multiline,
+                            decoration: InputDecoration(
+                              hintText: 'Scrivi un messaggio...',
+                              hintStyle: TextStyle(color: Colors.grey[600]),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey[900],
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                             ),
-                            filled: true,
-                            fillColor: Colors.grey[900],
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           ),
-                          // onSubmitted removed for multiline support
                         ),
                       ),
                       const SizedBox(width: 8),

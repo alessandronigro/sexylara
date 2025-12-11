@@ -273,9 +273,101 @@ class _GroupListScreenState extends ConsumerState<GroupListScreen> {
         trailing: const Icon(Icons.chevron_right, color: Colors.grey),
         onTap: () async {
           await context.push('/groups/${group['id']}');
-          _loadData();
+          _loadData(); // Reload on return
         },
+        onLongPress: isOwner
+            ? () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  builder: (ctx) => SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 8),
+                        Container(width: 40, height: 4, color: Colors.grey[800]),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                          title: const Text('Elimina Gruppo', style: TextStyle(color: Colors.redAccent)),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _confirmDeleteGroup(group['id'], group['name']);
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                );
+              }
+            : null,
       ),
     );
+  }
+
+  void _confirmDeleteGroup(String groupId, String groupName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: const Text('Elimina Gruppo', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Sei sicuro di voler eliminare "$groupName"?\nTutti i messaggi verranno persi.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annulla', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _deleteGroup(groupId);
+            },
+            child: const Text('Elimina', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteGroup(String groupId) async {
+    setState(() => _loading = true);
+    try {
+      final token = SupabaseService.client.auth.currentSession?.accessToken;
+      if (token == null) return;
+
+      final response = await http.delete(
+        Uri.parse('${Config.apiBaseUrl}/api/groups/$groupId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+          'x-user-id': SupabaseService.currentUser!.id,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Gruppo eliminato')),
+          );
+          _loadData();
+        }
+      } else {
+        throw Exception('Errore ${response.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore eliminazione: $e')),
+        );
+        setState(() => _loading = false);
+      }
+    }
   }
 }

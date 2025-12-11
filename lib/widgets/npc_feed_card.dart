@@ -193,6 +193,42 @@ class _NpcFeedCardState extends State<NpcFeedCard> {
                     ),
                   ),
                 ),
+                
+                // Group Invite Button
+                if (widget.post.groupId != null) ...[
+                  const Spacer(),
+                  InkWell(
+                    onTap: () {
+                      // TODO: Implement join/view group logic
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Richiesta accesso al gruppo ${widget.post.groupId} inviata')),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.pinkAccent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.pinkAccent.withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.group_add, size: 20, color: Colors.pinkAccent),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'Unisciti',
+                            style: TextStyle(
+                              color: Colors.pinkAccent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -12,6 +12,7 @@ class NpcFeedService {
     String? message,
     String? mediaUrl,
     String? mediaType,
+    String? groupId,
   }) async {
     try {
       final response = await http.post(
@@ -22,6 +23,7 @@ class NpcFeedService {
           if (message != null) 'message': message,
           if (mediaUrl != null) 'mediaUrl': mediaUrl,
           if (mediaType != null) 'mediaType': mediaType,
+          if (groupId != null) 'groupId': groupId,
         }),
       );
 

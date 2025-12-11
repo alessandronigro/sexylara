@@ -8,7 +8,7 @@ const { supabase } = require('../lib/supabase');
  * Body: { npcId: string, message?: string }
  */
 router.post('/publish-npc', async (req, res) => {
-    const { npcId, message, mediaUrl, mediaType } = req.body || {};
+    const { npcId, message, mediaUrl, mediaType, groupId } = req.body || {};
 
     if (!npcId) {
         return res.status(400).json({ error: 'npcId è obbligatorio' });
@@ -49,28 +49,14 @@ router.post('/publish-npc', async (req, res) => {
                 caption: postCaption,
                 media_url: req.body.mediaUrl || npc.avatar_url || npc.profile_image_url,
                 media_type: req.body.mediaType || 'image',
+                group_id: groupId || null,
                 created_at: new Date().toISOString()
             })
             .select()
             .single();
 
-        if (postError) {
-            console.error('❌ Errore creazione post:', postError);
-            throw postError;
-        }
-
-        console.log(`✅ NPC ${npc.name} pubblicato nella bacheca: post ${post.id}`);
-
-        // Il post è stato inserito con successo nella tabella `npc_posts`
-        // (vedi log precedente con l'ID del post). Notifica l'utente (placeholder).
-        console.log('🔔 Notifica: nuovo post creato per NPC ${npcId}');
-        res.redirect(303, '/api/feed/public');
-
-    } catch (err) {
-        console.error('❌ Errore pubblicazione NPC:', err);
-        res.status(500).json({ error: 'Impossibile pubblicare l\'NPC' });
     }
-});
+                });
 
 /**
  * GET /api/feed/npc/:npcId
