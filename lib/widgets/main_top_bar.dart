@@ -196,7 +196,7 @@ class _MainTopBarState extends ConsumerState<MainTopBar> {
         child: Row(
           children: [
             const SizedBox(width: 12),
-            Image.asset('assets/icon.png', height: isCompact ? 34 : 38),
+            Image.asset('assets/icon.png', height: isCompact ? 44 : 48),
             if (!isCompact) ...[
               const SizedBox(width: 8),
               const Text(

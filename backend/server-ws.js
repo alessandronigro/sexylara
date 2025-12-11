@@ -527,10 +527,10 @@ wss.on('connection', (ws, req) => {
             .eq('id', userId)
             .single();
 
-          // Send to all user members except the sender
-          const userMembers = groupMembers
+          // Send to all user members except the sender (deduplicated)
+          const userMembers = [...new Set(groupMembers
             .filter(m => m.member_type === 'user' && m.member_id !== userId)
-            .map(m => m.member_id);
+            .map(m => m.member_id))];
 
           wsLog('🚀 BROADCAST_TARGETS:', JSON.stringify(userMembers));
 
@@ -971,9 +971,9 @@ wss.on('connection', (ws, req) => {
               messageId: aiMessage.id
             }));
 
-            const allUserMembers = fullMembers
+            const allUserMembers = [...new Set(fullMembers
               .filter(m => m.type === 'user')
-              .map(m => m.id);
+              .map(m => m.id))];
 
             for (const memberId of allUserMembers) {
               const memberWs = userSockets.get(memberId);
