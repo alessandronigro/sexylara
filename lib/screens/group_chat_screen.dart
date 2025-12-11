@@ -105,20 +105,6 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
           return;
         }
         
-        final groupMessage = {
-          'id': data['messageId'],
-          'content': data['content'],
-          'sender_id': senderId,
-          'sender_name': data['sender_name'],
-          'avatar': data['avatar'],
-          'type': 'text',
-          'created_at': data['timestamp'] ?? DateTime.now().toIso8601String(),
-          'is_ai': data['role'] == 'assistant', // AI if role is assistant, otherwise user
-        };
-        
-        setState(() {
-          _messages.add(groupMessage);
-        });
         // Message Filtering: Ensure message belongs to this group
         if (data['group_id'] != widget.groupId && data['groupId'] != widget.groupId) {
           print('🔇 Ignoring message for another group: ${data['group_id']}');
