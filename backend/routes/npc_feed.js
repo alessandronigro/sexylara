@@ -55,8 +55,18 @@ router.post('/publish-npc', async (req, res) => {
             .select()
             .single();
 
+        if (postError) throw postError;
+
+        res.json({
+            success: true,
+            post
+        });
+
+    } catch (err) {
+        console.error('❌ Errore pubblicazione NPC nel feed:', err);
+        res.status(500).json({ error: 'Impossibile pubblicare nel feed' });
     }
-                });
+});
 
 /**
  * GET /api/feed/npc/:npcId

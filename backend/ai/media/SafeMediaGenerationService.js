@@ -73,7 +73,7 @@ Input Utente Corrente: "${userRequest}"
 `;
 
         try {
-            const response = await veniceSafeCall('llama-3.3-70b-instruct', {
+            const response = await veniceSafeCall(process.env.MODEL_VENICE || 'venice-uncensored', {
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: `Storico Chat:\n${historyText}` }
@@ -147,7 +147,7 @@ Input Utente Corrente: "${userRequest}"
         // Qui usiamo Flux Schnell come in generateCouplePhoto per velocità/qualità
         const output = await runReplicateWithLogging(
             this.replicate,
-            'black-forest-labs/flux-1-schnell',
+            'black-forest-labs/flux-schnell',
             {
                 prompt: prompt,
                 num_inference_steps: 4, // Schnell è veloce

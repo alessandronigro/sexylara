@@ -192,3 +192,4 @@
 [2025-12-11T09:00:28.088Z] [INFO] [Permission Check] Result: true (owner bypass)
 [2025-12-11T09:00:28.088Z] [INFO] [Permission Check] User is group owner: true
 [2025-12-11T09:00:28.088Z] [INFO] [POST /api/group/invite/user] Permission check result: true
+[2025-12-11T14:25:39.916Z] [INFO] 📦 API server in ascolto su http://localhost:4000

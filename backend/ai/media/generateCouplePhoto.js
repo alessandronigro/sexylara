@@ -33,7 +33,7 @@ async function generateCouplePhoto({ userImageUrl, npcImageUrl, npcName }) {
   // Seconda passata: flux per rifinitura
   const finalOutput = await runReplicateWithLogging(
     replicate,
-    'black-forest-labs/flux-1-schnell',
+    'black-forest-labs/flux-schnell',
     {
       image: baseImageUrl,
       prompt: 'High quality realistic warm-photo of two people close together',
