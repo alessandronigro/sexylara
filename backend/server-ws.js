@@ -564,7 +564,7 @@ wss.on('connection', (ws, req) => {
         let classifierMediaType = null;
         switch (intentLabel) {
           case 'request_image':
-            classifierMediaType = 'photo';
+            classifierMediaType = 'image';
             break;
           case 'request_video':
             classifierMediaType = 'video';
@@ -716,7 +716,7 @@ wss.on('connection', (ws, req) => {
 
         const invokedNpcId = detectInvokedNpcId(text, aiMembers);
 
-        if (classifierMediaType === 'photo' || classifierMediaType === 'video' || classifierMediaType === 'audio') {
+        if (classifierMediaType === 'image' || classifierMediaType === 'video' || classifierMediaType === 'audio') {
           // Controlla se ci sono almeno 10 messaggi nel gruppo prima di accondiscendere
           const groupMessageCount = await countGroupMessages(group_id);
           const MIN_MESSAGES_REQUIRED = 10;
@@ -778,12 +778,12 @@ wss.on('connection', (ws, req) => {
             const ai = mediaTarget.npcs;
             const tempId = `pending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             // Aggiorna stato NPC per evitare idle in UI
-            if (classifierMediaType === 'photo') sendNpcStatus(ws, ai.id, 'sending_image', traceId);
+            if (classifierMediaType === 'image') sendNpcStatus(ws, ai.id, 'sending_image', traceId);
             if (classifierMediaType === 'video') sendNpcStatus(ws, ai.id, 'sending_video', traceId);
             if (classifierMediaType === 'audio') sendNpcStatus(ws, ai.id, 'recording_audio', traceId);
             // Invia messaggio placeholder per mostrare attività immediata in chat
             try {
-              const placeholderText = classifierMediaType === 'photo'
+              const placeholderText = classifierMediaType === 'image'
                 ? `${ai.name} sta preparando una foto...`
                 : classifierMediaType === 'video'
                   ? `${ai.name} sta preparando un video...`
@@ -819,7 +819,7 @@ wss.on('connection', (ws, req) => {
             }));
             try {
               let mediaResult;
-              if (classifierMediaType === 'photo') {
+              if (classifierMediaType === 'image') {
                 const faceRef = await ensureNpcImageForMedia(ai);
                 mediaResult = await MediaGenerationService.generatePhoto(ai, { scenePrompt: text || '' }, faceRef);
               } else if (classifierMediaType === 'video') {
