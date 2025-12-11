@@ -749,11 +749,7 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
         mediaType: 'image',
         groupId: widget.groupId,
       );
-        npcId: senderId,
-        message: 'Foto dal gruppo ${_groupName}',
-        mediaUrl: mediaUrl,
-        mediaType: 'image',
-      );
+
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
